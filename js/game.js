@@ -146,6 +146,16 @@ const Game = {
     this.fxPower = cfg.fxPower == null ? 1 : cfg.fxPower;
     this.style = cfg.style || 'phigros';
     this.auto = cfg.auto === true;      // 自动演奏：按谱面时间自动打击，用来做演示
+    /* 手机端的 HUD 缩放与安全区（刘海/圆角）。
+       env() 在 canvas 里用不了，所以从 CSS 变量上读一次。 */
+    this.hudK = LR.isMobile && LR.isMobile() ? 0.62 : 1;
+    try {
+      const cs = getComputedStyle(document.documentElement);
+      this.safeL = parseFloat(cs.getPropertyValue('--safe-l')) || 0;
+      this.safeR = parseFloat(cs.getPropertyValue('--safe-r')) || 0;
+      this.safeT = parseFloat(cs.getPropertyValue('--safe-t')) || 0;
+      this.safeB = parseFloat(cs.getPropertyValue('--safe-b')) || 0;
+    } catch (e) { this.safeL = this.safeR = this.safeT = this.safeB = 0; }
     this.tilt = 0; this.tiltTarget = 0; this.tiltBar = -1;
 
     const n = this.chart.lanes;
@@ -1004,21 +1014,26 @@ const Game = {
     c.fillStyle = pg;
     c.fillRect(0, 0, W * prog, 3);
 
-    /* ---- Phigros 布局：右上分数（7 位补零）/ 中上连击 + RECORD / 左下曲名 / 右下等级 ---- */
+    /* ---- Phigros 布局：右上分数（7 位补零）/ 中上连击 + RECORD / 左下曲名 / 右下等级 ----
+       手机端整体乘以 hudK 缩小，并让左右避让安全区，绝不铺满边缘 */
     const st = this.stats();
+    const K = this.hudK || 1;
+    const mL = 26 * K + (this.safeL || 0);
+    const mR = 26 * K + (this.safeR || 0);
+    const mTop = 14 * K + (this.safeT || 0);
     c.textAlign = 'right'; c.textBaseline = 'top';
-    c.font = '600 30px ui-monospace,Consolas,monospace';
+    c.font = '600 ' + Math.round(30 * K) + 'px ui-monospace,Consolas,monospace';
     c.fillStyle = 'rgba(255,255,255,.92)';
-    c.fillText(String(st.score).padStart(7, '0'), W - 26, 14);
-    c.font = '600 12px ui-monospace,Consolas,monospace';
+    c.fillText(String(st.score).padStart(7, '0'), W - mR, mTop);
+    c.font = '600 ' + Math.round(12 * K) + 'px ui-monospace,Consolas,monospace';
     c.fillStyle = 'rgba(200,225,255,.6)';
-    c.fillText((st.acc * 100).toFixed(2) + '%', W - 26, 50);
+    c.fillText((st.acc * 100).toFixed(2) + '%', W - mR, mTop + 36 * K);
 
     if (this.combo >= 2) {
       const pop = 1 + this.comboPop * 0.24;
       c.save();
-      c.translate(W / 2, 52);
-      c.scale(pop, pop);
+      c.translate(W / 2, 52 * K + (this.safeT || 0));
+      c.scale(pop * K, pop * K);
       c.textAlign = 'center'; c.textBaseline = 'middle';
       c.font = '700 46px "SF Pro Display",system-ui,sans-serif';
       c.shadowColor = 'rgba(180,225,255,.9)';
@@ -1035,23 +1050,26 @@ const Game = {
     if (this.auto) {
       c.textAlign = 'left'; c.textBaseline = 'top';
       c.font = '700 13px ui-monospace,Consolas,monospace';
-      const bw = 54, bh = 22;
+      c.font = '700 ' + Math.max(9, Math.round(13 * K)) + 'px ui-monospace,Consolas,monospace';
+      const bw = 54 * K, bh = 22 * K;
+      const abx = mL, aby = 18 * K + (this.safeT || 0);
       c.fillStyle = 'rgba(255,214,120,.22)';
-      rr(c, 26, 18, bw, bh, 7); c.fill();
+      rr(c, abx, aby, bw, bh, 7 * K); c.fill();
       c.strokeStyle = 'rgba(255,214,120,.8)'; c.lineWidth = 1;
-      rr(c, 26.5, 18.5, bw - 1, bh - 1, 7); c.stroke();
+      rr(c, abx + 0.5, aby + 0.5, bw - 1, bh - 1, 7 * K); c.stroke();
       c.fillStyle = '#ffd98a';
-      c.fillText('AUTO', 26 + bw / 2 - 15, 18 + bh / 2 - 7);
+      c.fillText('AUTO', abx + bw / 2 - 15 * K, aby + bh / 2 - 7 * K);
     }
 
     const lv = { easy: 'Lv.5', normal: 'Lv.9', hard: 'Lv.13', expert: 'Lv.15' }[this.chart.diff] || 'Lv.?';
-    c.font = '600 14px system-ui,"PingFang SC",sans-serif';
+    const mBot = 18 * K + (this.safeB || 0);
+    c.font = '600 ' + Math.max(9, Math.round(14 * K)) + 'px system-ui,"PingFang SC",sans-serif';
     c.textAlign = 'left'; c.textBaseline = 'bottom';
     c.fillStyle = 'rgba(255,255,255,.78)';
-    c.fillText(this.cfg.title || '', 26, H - 18);
+    c.fillText(this.cfg.title || '', mL, H - mBot);
     c.textAlign = 'right';
     c.fillStyle = 'rgba(255,255,255,.66)';
-    c.fillText(lv, W - 26, H - 18);
+    c.fillText(lv, W - mR, H - mBot);
 
     /* 开场倒计时 */
     const cd = this.firstNote - t;

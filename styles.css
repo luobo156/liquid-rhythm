@@ -11,6 +11,12 @@
   --bg-0:#04050a;
   --bg-1:#0a0d18;
 
+  /* 全面屏安全区：刘海、圆角、home 条。左右各留一份，避免内容贴边被切 */
+  --safe-l:env(safe-area-inset-left, 0px);
+  --safe-r:env(safe-area-inset-right, 0px);
+  --safe-t:env(safe-area-inset-top, 0px);
+  --safe-b:env(safe-area-inset-bottom, 0px);
+
   --txt:#f2f5fb;
   --txt-2:rgba(238,243,255,.66);
   --txt-3:rgba(238,243,255,.42);
@@ -839,11 +845,11 @@ html.is-mobile #rowDrag{display:none}   /* 手机端拖拽已禁用，这个开�
 /* ---- 滚动：flex 里的 margin:auto 配合 overflow:auto 会让顶部内容划不到，
        所以手机端统一改成 flex-start + stretch，并清掉 auto 边距 ---- */
 html.is-mobile .screen{
-  justify-content:flex-start;
-  align-items:stretch;
-  gap:10px;
-  padding:8px;
-  padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));
+  align-items:center;                 /* 内容居中成一条窄列，不再左右拉满 */
+  justify-content:flex-start;         /* 溢出时从顶部开始（safe center 不支持时的退路） */
+  justify-content: safe center;       /* 放得下就垂直居中，放不下自动退回顶部，不会切掉上面 */
+  gap:8px;
+  padding:max(8px, var(--safe-t)) max(10px, var(--safe-r)) max(12px, var(--safe-b)) max(10px, var(--safe-l));
   overflow-y:auto;
   overflow-x:hidden;
   -webkit-overflow-scrolling:touch;
@@ -854,7 +860,7 @@ html.is-mobile .screen--game,
 html.is-mobile .screen--editor{overflow:hidden;padding:6px}
 html.is-mobile .hero,
 html.is-mobile .panel,
-html.is-mobile .modecards{width:100%;max-width:100%;margin-left:0;margin-right:0}
+html.is-mobile .modecards{width:min(380px,100%);max-width:min(380px,100%);margin-left:0;margin-right:0}
 html.is-mobile .hero{margin-top:0!important}
 html.is-mobile .modecards{margin-bottom:0!important;flex-direction:column}
 
@@ -866,17 +872,39 @@ html.is-mobile .iconbtn{width:30px;height:30px;border-radius:9px;font-size:13px}
 html.is-mobile .modes{padding:3px}
 html.is-mobile .modes .chip{padding:5px 9px;font-size:11.5px;border-radius:9px}
 
-/* ---- 主菜单 ---- */
-html.is-mobile .hero{padding:14px 12px;border-radius:20px}
-html.is-mobile .hero__title{font-size:clamp(23px,7.4vw,31px)}
-html.is-mobile .hero__sub{font-size:12px;line-height:1.6;margin-bottom:10px;max-width:none}
-html.is-mobile .drop{padding:11px;gap:8px;border-radius:14px}
-html.is-mobile .drop__txt b{font-size:12.5px}
-html.is-mobile .drop__txt small{font-size:10.5px}
-html.is-mobile .hero__foot{gap:8px;flex-wrap:wrap}
-html.is-mobile .btn{padding:8px 12px;font-size:12.5px;border-radius:11px}
-html.is-mobile .modecards{gap:8px}
-html.is-mobile .mcard{padding:10px;border-radius:16px}
+/* ---- 主菜单：整体压紧，目标是一屏看全、不用滑动 ---- */
+html.is-mobile .hero{padding:11px 11px 12px;border-radius:18px;gap:0}
+html.is-mobile .eyebrow{font-size:9px;letter-spacing:.12em;margin-bottom:4px}
+html.is-mobile .hero__title{font-size:clamp(20px,6.6vw,26px);margin-bottom:5px}
+html.is-mobile .hero__sub{font-size:10.5px;line-height:1.5;margin-bottom:9px;max-width:none}
+html.is-mobile .drop{padding:8px 10px;gap:9px;border-radius:13px}
+html.is-mobile .drop__ico{width:30px;height:30px;font-size:14px;border-radius:9px}
+html.is-mobile .drop__txt b{font-size:12px}
+html.is-mobile .drop__txt span{font-size:10px}
+html.is-mobile .hero__row{gap:6px}
+html.is-mobile .hint{display:none}
+html.is-mobile .btn{padding:7px 11px;font-size:12px;border-radius:10px}
+
+/* 模式卡改成横排：预览在左、文字在右，高度从约 110px 压到约 56px */
+html.is-mobile .modecards{gap:7px}
+html.is-mobile .mcard{
+  flex-direction:row;align-items:center;gap:9px;
+  padding:7px 9px;border-radius:14px;
+}
+html.is-mobile .mcard:hover{transform:none}          /* 触屏上 hover 会粘住，去掉位移 */
+html.is-mobile .mcard:active{transform:scale(.985)}
+html.is-mobile .mcard__prev{width:54px;height:40px;flex:0 0 auto;border-radius:10px}
+/* 预览图的绝对定位是按 64px 高写死的，压到 40px 后会被裁掉，按新尺寸重排一遍 */
+html.is-mobile .prev-fall i{height:6px;border-radius:3px;box-shadow:0 0 8px rgba(110,210,255,.5)}
+html.is-mobile .prev-rd i{bottom:5px;width:17px;height:17px;border-radius:6px;box-shadow:0 0 8px rgba(255,130,190,.45)}
+html.is-mobile .prev-side i{height:5px;border-radius:3px;box-shadow:0 0 7px rgba(255,190,90,.45)}
+html.is-mobile .prev-side i:nth-child(1){top:4px}
+html.is-mobile .prev-side i:nth-child(2){top:13px}
+html.is-mobile .prev-side i:nth-child(3){top:22px}
+html.is-mobile .prev-side i:nth-child(4){top:31px}
+html.is-mobile .mcard__meta{flex:1 1 auto;min-width:0}
+html.is-mobile .mcard__meta b{font-size:12.5px}
+html.is-mobile .mcard__meta span{font-size:10px}
 
 /* ---- 谱面预览 / 结果页 ---- */
 html.is-mobile .panel{padding:12px;border-radius:20px}
@@ -902,6 +930,32 @@ html.is-mobile .kbkey{min-width:54px;padding:8px 6px;font-size:11.5px}
 html.is-mobile .busy__card{padding:18px 20px;min-width:min(300px,88vw)}
 html.is-mobile .pausecard{padding:18px 20px;min-width:min(300px,92vw)}
 html.is-mobile .wavewrap{height:70px}
+
+/* ---- 游戏内：只留 Phigros 那种极小 HUD，绝不压住谱面 ---- */
+html.is-mobile .screen--game{padding:0;overflow:hidden;align-items:stretch}
+html.is-mobile .gamehud{
+  position:absolute;inset:0;pointer-events:none;
+  padding:max(7px, var(--safe-t)) max(12px, var(--safe-r)) 0 max(12px, var(--safe-l));
+}
+/* 曲名和按键提示在手机上一律不显示 —— 它们占地最大、信息价值最低 */
+html.is-mobile .gamehud__title,
+html.is-mobile .gamehud__keys{display:none!important}
+/* 暂停键：26px、40% 透明，贴左上角，几乎不挡谱面 */
+html.is-mobile #btnPause{
+  position:relative;   /* ::after 扩可点区域必须是定位元素，否则会以 .gamehud 为基准 */
+  width:26px;height:26px;min-width:0;padding:0;border-radius:8px;
+  font-size:9px;line-height:1;opacity:.4;
+  background:rgba(9,12,20,.4);
+  border:1px solid rgba(255,255,255,.16);
+  box-shadow:none;
+  backdrop-filter:blur(6px);
+  -webkit-backdrop-filter:blur(6px);
+}
+html.is-mobile #btnPause::after{
+  content:"";position:absolute;inset:-11px;   /* 视觉上 26px，实际可点区域 48px */
+}
+html.is-mobile #btnPause:active{opacity:1}
+html.is-mobile .pausecard{padding:16px 18px;min-width:min(280px,86vw)}
 
 /* ---- 编辑器 ---- */
 html.is-mobile .edwrap{gap:6px}

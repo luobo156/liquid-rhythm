@@ -31,8 +31,26 @@ setTimeout(function () {
   const out = [];
   document.querySelectorAll('iframe').forEach(function (f, i) {
     try {
-      const t = f.contentDocument && f.contentDocument.title;
-      out.push('#' + i + ' ' + (t || '(空)'));
+      const doc = f.contentDocument, win = f.contentWindow;
+      const sc = doc.querySelector('.screen.is-active');
+      const pause = doc.getElementById('btnPause');
+      const title = doc.getElementById('gameTitle');
+      const keys = doc.getElementById('gameKeys');
+      const cs = win.getComputedStyle(pause);
+      const rect = sc.getBoundingClientRect();
+      out.push('#' + i +
+        ' vw=' + doc.documentElement.clientWidth +
+        ' vh=' + doc.documentElement.clientHeight +
+        ' 屏=' + sc.id +
+        ' 内容高=' + sc.scrollHeight + ' 视口高=' + sc.clientHeight +
+        ' 需滚动=' + (sc.scrollHeight > sc.clientHeight + 1) +
+        ' | 暂停键=' + Math.round(pause.getBoundingClientRect().width) + 'x' +
+          Math.round(pause.getBoundingClientRect().height) +
+          ' 透明度=' + cs.opacity +
+        ' | 曲名HUD=' + win.getComputedStyle(title).display +
+        ' 按键HUD=' + win.getComputedStyle(keys).display +
+        ' | 内容列宽=' + Math.round(rect.width) +
+        ' 左=' + Math.round(rect.left) + ' 右=' + Math.round(rect.right));
     } catch (e) { out.push('#' + i + ' 读不到: ' + e.message); }
   });
   document.getElementById('probe').textContent = out.join('\n');
