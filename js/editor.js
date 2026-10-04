@@ -5,7 +5,8 @@
    - 右键 / Alt+左键音符 = 删除；双击 = 切换长按
    - 长按右脚拖动 = 改时长
    - 空格播放/暂停，滚轮横向滚动，Ctrl+滚轮缩放，Ctrl+Z/Y 撤销重做
-   谱面可导出/导入 JSON。
+   - Tab 切换「鼠标添加 / 按键添加」，按键模式下按对应键在播放头处加音块
+   - 谱面可导出/导入 JSON。
    ============================================================ */
 (function (LR) {
 'use strict';
@@ -15,6 +16,33 @@ const fmtTime = LR.util.fmtTime;
 
 const FORMAT = 'liquid-rhythm-chart';
 const VERSION = 1;
+
+/* 按键添加：按轨道数映射到键盘。
+   刻意避开 Space / 方向键 / Delete / Ctrl 组合，避免和编辑器快捷键打架。
+   5K 和 7K 的中键用 G 而不是 Space，同理。 */
+const KEYMAPS = {
+  1: ['KeyF'],
+  2: ['KeyF', 'KeyJ'],
+  3: ['KeyD', 'KeyF', 'KeyJ'],
+  4: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'],
+  5: ['KeyD', 'KeyF', 'KeyG', 'KeyJ', 'KeyK'],
+  6: ['KeyS', 'KeyD', 'KeyF', 'KeyJ', 'KeyK', 'KeyL'],
+  7: ['KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyJ', 'KeyK', 'KeyL'],
+  8: ['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyJ', 'KeyK', 'KeyL', 'Semicolon'],
+  9: ['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyJ', 'KeyK', 'KeyL', 'Semicolon']
+};
+const KEY_LABEL = {
+  Semicolon: ';', Quote: "'", Comma: ',', Period: '.',
+  Slash: '/', Backslash: '\\', Space: '⎵', Minus: '-', Equal: '='
+};
+const HOLD_MIN_SEC = 0.2;   // 按住超过这么久才算长按
+
+function keyLabel(code) {
+  if (KEY_LABEL[code]) return KEY_LABEL[code];
+  if (code.indexOf('Key') === 0) return code.slice(3);
+  if (code.indexOf('Digit') === 0) return code.slice(5);
+  return code;
+}
 
 let ctx = null;          // { chart, songName, analysis, audio, onSave, onClose }
 let chart = null;
@@ -31,6 +59,8 @@ let hover = null;
 let undoStack = [];
 let redoStack = [];
 let ready = false;
+let inputMode = 'mouse';              // 'mouse' | 'keys'
+let keyHeld = Object.create(null);    // code -> { n, t0, fresh }
 
 const $ = function (s) { return document.querySelector(s); };
 const cv = function () { return $('#edCanvas'); };
@@ -67,6 +97,16 @@ function follow() {
   if (x > g.w * 0.72) scrollT = playhead - g.w * 0.28 / pps;
   else if (x < 0) scrollT = Math.max(0, playhead - g.w * 0.15 / pps);
   scrollT = Math.max(0, scrollT);
+}
+
+/* 当前轨数对应的键位表 */
+function keyMap() {
+  const n = Math.max(1, Math.min(9, (chart && chart.lanes) || 4));
+  return KEYMAPS[n] || KEYMAPS[4];
+}
+/* 某个键落在哪条轨道，-1 表示不是谱面键 */
+function keyLaneOf(code) {
+  return keyMap().indexOf(code);
 }
 
 /* ---------------- 撤销 / 重做 ---------------- */
@@ -136,6 +176,79 @@ function hitTest(x, y) {
   return null;
 }
 
+/* ---------------- 按键添加 ---------------- */
+/* 同一时刻同一轨道只保留一个音符（连按同一个键不会叠一堆），
+   但不同轨道可以在同一时刻共存，这样能敲出和弦。
+   返回 { n, fresh }：fresh=false 表示复用了已有音符，keyup 时不要动它的 dur。 */
+function keyAddNote(lane) {
+  const grid = beatLen() / snapDiv;
+  const t = snapT(playhead);
+  for (let i = 0; i < notes.length; i++) {
+    const n = notes[i];
+    if (n.lane === lane && Math.abs(n.t - t) < grid * 0.5) return { n: n, fresh: false };
+  }
+  pushUndo();
+  const n = { t: t, lane: lane, dur: 0, kind: 'tap' };
+  notes.push(n);
+  sortNotes();
+  sel = n;
+  return { n: n, fresh: true };
+}
+
+/* 按住期间把 tap 长成 hold（用墙钟时间，暂停时也能拉长） */
+function updateHeldKeys() {
+  const now = performance.now();
+  let any = false, grew = false;
+  for (const code in keyHeld) {
+    const st = keyHeld[code];
+    if (!st.fresh) continue;
+    const held = (now - st.t0) / 1000;
+    if (held >= HOLD_MIN_SEC) {
+      const grid = beatLen() / snapDiv;
+      const dur = Math.max(grid, held);
+      if (Math.abs(st.n.dur - dur) > 1e-4) { grew = true; }
+      st.n.dur = dur;
+      st.n.kind = 'hold';
+      any = true;
+    }
+  }
+  if (grew) refreshStats();
+  return any;
+}
+
+function onKeyDownNote(e) {
+  const lane = keyLaneOf(e.code);
+  if (lane < 0) return false;
+  e.preventDefault();
+  if (e.repeat) return true;                       // 系统重复触发，不再加音符
+  if (keyHeld[e.code]) return true;                // 理论上不会发生，兜底
+  const r = keyAddNote(lane);
+  keyHeld[e.code] = { n: r.n, t0: performance.now(), fresh: r.fresh };
+  sel = r.n;
+  draw(); refreshStats();
+  return true;
+}
+
+function onKeyUpNote(e) {
+  const st = keyHeld[e.code];
+  if (!st) return false;
+  delete keyHeld[e.code];
+  if (!st.fresh) { draw(); return true; }          // 复用的音符，保持原样
+  const n = st.n;
+  const held = (performance.now() - st.t0) / 1000;
+  if (held >= HOLD_MIN_SEC) {
+    const grid = beatLen() / snapDiv;
+    n.dur = Math.max(grid, snapT(n.t + held) - n.t);   // 尾巴吸附到网格
+    n.kind = 'hold';
+  } else {
+    n.dur = 0;
+    n.kind = 'tap';
+  }
+  sortNotes();
+  draw(); refreshStats();
+  return true;
+}
+
 /* ---------------- 绘制 ---------------- */
 function draw() {
   const c = cv();
@@ -148,6 +261,7 @@ function draw() {
   const beat = beatLen();
   const bar = beat * 4;
   const colors = ['#4fc3f7', '#ff7ab8', '#ffc861', '#5ce6a8', '#b388ff', '#ff8a65'];
+  const kmap = inputMode === 'keys' ? keyMap() : null;
 
   x2.clearRect(0, 0, W, H);
   x2.fillStyle = '#0a0d14';
@@ -158,6 +272,10 @@ function draw() {
     const y = yOfLane(l);
     x2.fillStyle = l % 2 ? 'rgba(255,255,255,.022)' : 'rgba(255,255,255,.045)';
     x2.fillRect(0, y, W, g.laneH);
+    if (kmap && kmap[l] && keyHeld[kmap[l]]) {          // 按住时整条轨道微亮
+      x2.fillStyle = 'rgba(120,200,255,.08)';
+      x2.fillRect(0, y, W, g.laneH);
+    }
     x2.fillStyle = 'rgba(255,255,255,.05)';
     x2.fillRect(0, y, W, 1);
   }
@@ -237,6 +355,25 @@ function draw() {
     }
   }
 
+  /* 键位提示（仅在按键添加模式显示） */
+  if (kmap) {
+    x2.save();
+    x2.textAlign = 'center';
+    x2.textBaseline = 'middle';
+    x2.font = '600 11px ui-monospace,Consolas,monospace';
+    for (let l = 0; l < g.lanes && l < kmap.length; l++) {
+      if (!kmap[l]) continue;
+      const cy = yOfLane(l) + g.laneH / 2;
+      const bh = Math.min(18, Math.max(12, g.laneH - 6));
+      const on = !!keyHeld[kmap[l]];
+      x2.fillStyle = on ? 'rgba(255,255,255,.26)' : 'rgba(255,255,255,.07)';
+      rr(x2, 6, cy - bh / 2, 20, bh, 4); x2.fill();
+      x2.fillStyle = on ? '#fff' : 'rgba(190,225,255,.55)';
+      x2.fillText(keyLabel(kmap[l]), 16, cy + 0.5);
+    }
+    x2.restore();
+  }
+
   /* 播放头 */
   const px = tToX(playhead);
   if (px >= -2 && px <= W + 2) {
@@ -290,12 +427,15 @@ function syncPlayBtn() {
 }
 function tick() {
   raf = requestAnimationFrame(tick);
+  const held = updateHeldKeys();          // 按住中的键每帧更新时长
   if (playing && ctx && ctx.audio) {
     playhead = ctx.audio.currentTime();
     if (!ctx.audio.playing) { playing = false; syncPlayBtn(); }
     follow();
     draw();
     updateTimeLabel();
+  } else if (held) {
+    draw();                              // 暂停时也要重绘，长按才看得见
   }
 }
 
@@ -404,6 +544,36 @@ function save() {
   if (ctx && ctx.onSave) ctx.onSave(chart);
 }
 
+/* ---------------- 输入模式 ---------------- */
+function modeHint() {
+  if (inputMode !== 'keys') return '鼠标添加：左键空白处加音符';
+  const map = keyMap();
+  const labels = [];
+  for (let i = 0; i < map.length; i++) labels.push(keyLabel(map[i]));
+  return '按键添加：' + labels.join(' ') + '　（按住可拉长按）';
+}
+
+function syncInputBtn() {
+  const b = $('#edInputMode');
+  if (!b) return;
+  b.textContent = inputMode === 'keys' ? '⌨ 按键添加' : '🖱 鼠标添加';
+  if (b.classList) b.classList.toggle('on', inputMode === 'keys');
+}
+
+function setInputMode(m) {
+  inputMode = (m === 'keys') ? 'keys' : 'mouse';
+  keyHeld = Object.create(null);      // 切模式时放弃按住中的键
+  syncInputBtn();
+  draw();
+  toast(modeHint());
+}
+
+function toggleInputMode() {
+  setInputMode(inputMode === 'keys' ? 'mouse' : 'keys');
+}
+
+function onInputModeBtn() { toggleInputMode(); }
+
 /* ---------------- 打开 / 关闭 ---------------- */
 function open(options) {
   ctx = options;
@@ -415,9 +585,11 @@ function open(options) {
   sel = null; hover = null; drag = null;
   undoStack = []; redoStack = [];
   playing = false; ready = false;
+  keyHeld = Object.create(null);
   playhead = 0;
   scrollT = 0;
   syncPlayBtn();
+  syncInputBtn();
   bind();
   layout();
   refreshStats();
@@ -434,6 +606,7 @@ function close() {
   if (playing && ctx && ctx.audio) { ctx.audio.pause(); playing = false; }
   if (raf) { cancelAnimationFrame(raf); raf = 0; }
   unbind();
+  keyHeld = Object.create(null);
   sel = null; drag = null; ctx = null; ready = false;
 }
 
@@ -472,6 +645,9 @@ function onDown(e) {
   }
   const lane = laneAtY(p.y);
   if (lane < 0) return;
+  /* 按键模式下空白处点击不产生音符，免得和键盘输入互相干扰。
+     音符的选中 / 拖动 / 右键删除 / 双击切换长按 依然可用。 */
+  if (inputMode === 'keys') { sel = null; draw(); return; }
   const n = addNote(xToT(p.x), lane);
   drag = { mode: 'move', n: n, grabT: 0, startT: n.t, startLane: n.lane };
   draw();
@@ -528,6 +704,7 @@ function setPlayhead(t) {
 function onKey(e) {
   const tag = (e.target && e.target.tagName || '').toLowerCase();
   if (tag === 'input' || tag === 'textarea') return;
+  if (e.code === 'Tab') { e.preventDefault(); toggleInputMode(); return; }
   if (e.code === 'Space') { e.preventDefault(); togglePlay(); return; }
   if (e.key === 'Delete' || e.key === 'Backspace') {
     if (sel) { e.preventDefault(); removeNote(sel); draw(); }
@@ -542,6 +719,13 @@ function onKey(e) {
   if (e.key === 'ArrowLeft') { e.preventDefault(); setPlayhead(playhead - (e.shiftKey ? 1 : beatLen())); }
   if (e.key === 'ArrowRight') { e.preventDefault(); setPlayhead(playhead + (e.shiftKey ? 1 : beatLen())); }
   if (e.key === 'Escape') { if (ctx && ctx.onClose) ctx.onClose(); }
+  /* 按键添加放最后：功能键优先，剩下的才轮到谱面键位 */
+  if (inputMode === 'keys' && onKeyDownNote(e)) return;
+}
+
+function onKeyUp(e) {
+  /* 不判断 inputMode：中途切模式时也要把按住中的音符收尾 */
+  onKeyUpNote(e);
 }
 
 function bind() {
@@ -561,6 +745,9 @@ function bind() {
   c.addEventListener('wheel', onWheel, { passive: false });
   window.addEventListener('resize', layout);
   window.addEventListener('keydown', onKey);
+  window.addEventListener('keyup', onKeyUp);
+  const mb = $('#edInputMode');
+  if (mb) mb.addEventListener('click', onInputModeBtn);
 }
 function unbind() {
   if (!bound) return;
@@ -575,6 +762,9 @@ function unbind() {
   }
   window.removeEventListener('resize', layout);
   window.removeEventListener('keydown', onKey);
+  window.removeEventListener('keyup', onKeyUp);
+  const mb = $('#edInputMode');
+  if (mb) mb.removeEventListener('click', onInputModeBtn);
 }
 
 function toast(msg) { if (LR.ui && LR.ui.toast) LR.ui.toast(msg); }
@@ -608,6 +798,9 @@ LR.Editor = {
   setPlayhead: setPlayhead,
   addNote: addNote,
   removeSelected: function () { if (sel) { removeNote(sel); draw(); } },
+  setInputMode: setInputMode,
+  toggleInputMode: toggleInputMode,
+  getInputMode: function () { return inputMode; },
   clearAll: function () {
     if (!notes.length) return;
     if (!window.confirm('确定清空全部 ' + notes.length + ' 个音符？')) return;
@@ -616,7 +809,13 @@ LR.Editor = {
     draw(); refreshStats();
   },
   /* 供自动化测试用 */
-  _state: function () { return { notes: notes, sel: sel, snap: snapDiv, pps: pps, playhead: playhead }; },
+  _state: function () {
+    return {
+      notes: notes, sel: sel, snap: snapDiv, pps: pps,
+      playhead: playhead, inputMode: inputMode,
+      held: Object.keys(keyHeld)
+    };
+  },
   _setNotes: function (arr) { notes = arr; sortNotes(); draw(); refreshStats(); },
   _validate: validate
 };

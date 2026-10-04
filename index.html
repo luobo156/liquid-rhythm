@@ -197,6 +197,7 @@
             <button class="btn btn--sm" id="edImport">导入谱面</button>
             <button class="btn btn--sm" id="edExport">导出谱面</button>
             <button class="btn btn--sm btn--primary" id="edSave">保存并返回</button>
+            <button id="edInputMode" class="edBtn" title="Tab 切换">🖱 鼠标添加</button>
           </div>
           <input type="file" id="edFile" accept=".json,application/json" hidden />
         </div>
@@ -204,7 +205,7 @@
         <div class="edstage"><canvas id="edCanvas" aria-label="谱面时间轴"></canvas></div>
 
         <p class="edhint">
-          <b>左键空白</b> 加音符 · <b>拖动</b> 移动 · <b>右键 / Alt+左键</b> 删除 ·
+          <b>Tab</b> 切换添加模式 · <b>左键空白</b> 加音符(鼠标模式) · <b>SDFJKL</b> 加音符(按键模式) · <b>拖动</b> 移动 · <b>右键 / Alt+左键</b> 删除 ·
           <b>双击</b> 切换长按 · <b>拖长按右端</b> 改时长 · <b>标尺上拖动</b> 定位 ·
           <b>空格</b> 播放 · <b>滚轮</b> 横向滚动 · <b>Ctrl+滚轮</b> 缩放 · <b>Ctrl+Z / Ctrl+Shift+Z</b> 撤销重做
         </p>
