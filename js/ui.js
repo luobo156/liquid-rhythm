@@ -442,6 +442,7 @@ function chooseBlank() {
 
 /* ---------------- 游戏 ---------------- */
 function startGame(auto) {
+  if (LR.tryLockLandscape) LR.tryLockLandscape();   // 进游戏时尽量转成横屏
   if (!RT.chart || !RT.chart.notes.length) { toast('这份谱面还没有音符，先点「编辑谱面」放几个'); return; }
   stopPreview();
   const cfg = {
@@ -747,6 +748,9 @@ function bind() {
   $('#btnBackMenu').addEventListener('click', function () { stopPreview(); show('menu'); });
   $('#btnPreview').addEventListener('click', startPreview);
   $('#btnStart').addEventListener('click', startGame);
+  $('#rotateSkip').addEventListener('click', function () {
+    document.documentElement.classList.add('skip-rotate');
+  });
   $('#btnAuto').addEventListener('click', function () { startGame(true); });
 
   /* ---------------- 谱面编辑器 ---------------- */
@@ -1136,10 +1140,17 @@ function boot() {
   } catch (e) { /* ignore */ }
 }
 /* exposed for editor.js */
+  /* 调试用：?screen=game 之类可以直接切屏，便于截图验证游戏内布局 */
+  try {
+    const qs = new URLSearchParams(location.search).get('screen');
+    if (qs && document.getElementById('screen-' + qs)) setTimeout(function () { show(qs); }, 500);
+  } catch (e) { /* ignore */ }
+
   LR.ui = { toast: toast, refreshChartMeta: refreshChartMeta };
 
   /* 旋转屏幕或改窗口尺寸后重新判定：从手机变回桌面要能恢复拖拽 */
   window.addEventListener('resize', function () {
+    document.documentElement.classList.remove('skip-rotate');   // 转回去后重新提示
     const was = document.documentElement.classList.contains('is-mobile');
     const now = LR.syncMobile();
     if (now !== was) {

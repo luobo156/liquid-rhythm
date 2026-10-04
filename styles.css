@@ -932,6 +932,11 @@ html.is-mobile .pausecard{padding:18px 20px;min-width:min(300px,92vw)}
 html.is-mobile .wavewrap{height:70px}
 
 /* ---- 游戏内：只留 Phigros 那种极小 HUD，绝不压住谱面 ---- */
+/* 游戏进行时把顶栏整个去掉（原规则只淡到 22%，手机上它占近 1/4 高度，
+   玻璃按钮还会把壁纸糊成一条条斜向色带，看着就是「上面还有 UI 挡着」）。
+   去掉后 .stage 自动撑满，画布拿到完整高度。 */
+html.is-mobile body.in-game .topbar{display:none}
+html.is-mobile body.in-game .screen--game{padding:0}
 html.is-mobile .screen--game{padding:0;overflow:hidden;align-items:stretch}
 html.is-mobile .gamehud{
   position:absolute;inset:0;pointer-events:none;
@@ -964,3 +969,32 @@ html.is-mobile .edbar__right{margin-left:0;width:100%}
 html.is-mobile .edtitle b{font-size:12.5px;max-width:56vw}
 html.is-mobile .edhint{display:none}
 html.is-mobile .edstage{border-radius:11px}
+
+/* ============ 手机竖屏提示（手机端建议全程横屏）============ */
+.rotate{display:none}
+html.is-mobile.is-portrait .rotate{
+  display:grid;place-items:center;
+  position:fixed;inset:0;z-index:60;padding:24px;
+  background:rgba(4,5,10,.9);
+  -webkit-backdrop-filter:blur(20px) saturate(1.3);
+  backdrop-filter:blur(20px) saturate(1.3);
+}
+html.is-mobile.is-portrait.skip-rotate .rotate{display:none}
+.rotate__card{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;max-width:300px}
+.rotate__ico{
+  display:grid;place-items:center;width:56px;height:56px;border-radius:18px;
+  font-size:22px;color:#cfe9ff;
+  background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16);
+  animation:rotHint 2.6s var(--e-out) infinite;
+}
+@keyframes rotHint{
+  0%,32%{transform:rotate(0deg)}
+  58%,100%{transform:rotate(-90deg)}
+}
+.rotate__card b{font-size:16px;font-weight:640}
+.rotate__card small{font-size:11.5px;line-height:1.6;color:var(--txt-3)}
+.rotate__skip{
+  margin-top:4px;padding:7px 13px;border-radius:10px;font-size:11.5px;color:var(--txt-2);
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);
+}
+.rotate__skip:active{background:rgba(255,255,255,.12)}

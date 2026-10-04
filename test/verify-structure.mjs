@@ -33,7 +33,13 @@ bad += missing.length;
 const VOID = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr','path','rect','circle','ellipse','line','polyline','polygon','stop','use','feTurbulence','feGaussianBlur','feDisplacementMap','feColorMatrix','feBlend']);
 const stack = [];
 const errs = [];
-const body = html.replace(/<!--[\s\S]*?-->/g, '').replace(/<!DOCTYPE[^>]*>/i, '');
+/* 先把 <script> / <style> 的内容抽掉再查标签平衡 —— 它们的内容不是 HTML，
+       里面的 < 或 </ 字样不该参与配对。标签本身保留，配对仍会被检查。 */
+  const body = html
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<!DOCTYPE[^>]*>/i, '')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '<script></script>')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, '<style></style>');
 for (const m of body.matchAll(/<(\/?)([a-zA-Z][\w:-]*)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/g)) {
   const close = m[1] === '/', tag = m[2], self = m[4] === '/';
   if (VOID.has(tag) || self) continue;

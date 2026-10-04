@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="color-scheme" content="dark" />
 <title>Liquid Rhythm · 液态玻璃音游原型</title>
-<link rel="stylesheet" href="styles.css" />
+<!-- 手机端检测：必须在 styles.css 之前执行，否则手机上会先闪一下桌面布局 -->
+  <script src="js/mobile.js"></script>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body class="q-high">
 
@@ -508,6 +510,15 @@
         </button>
       </div>
     </div>
+  </div>
+</div>
+<!-- ===== 手机竖屏提示：手机端建议全程横屏 ===== -->
+<div class="rotate" id="rotateHint" aria-hidden="true">
+  <div class="rotate__card">
+    <span class="rotate__ico">▭</span>
+    <b>请横屏游玩</b>
+    <small>横屏才放得下完整的谱面，左右也够手指按</small>
+    <button class="rotate__skip" id="rotateSkip">仍要竖屏查看</button>
   </div>
 </div>
 <div class="busy is-hidden" id="busy">

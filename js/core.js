@@ -844,36 +844,7 @@ LR.makeEmptyChart = function (A, opts) {
     empty: true
   };
 };
-/* ============================================================
-   手机端检测
-   判据：主指针是粗的（coarse）+ 真有触摸点，或者窗口本身就很窄。
-   触摸屏笔记本的主指针通常是 fine，所以不会被误判成手机。
-   ?mobile=1 / ?mobile=0 可以强制，方便测试与截图。
-   ============================================================ */
-const MOBILE_FORCE = (function () {
-  try {
-    const q = new URLSearchParams(location.search).get('mobile');
-    return q === '1' ? true : (q === '0' ? false : null);
-  } catch (e) { return null; }
-})();
-
-LR.isMobile = function () {
-  if (MOBILE_FORCE !== null) return MOBILE_FORCE;
-  try {
-    const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-    const touch = (navigator.maxTouchPoints || 0) > 0;
-    const narrow = Math.min(window.innerWidth, window.innerHeight) <= 560;
-    return (coarse && touch) || narrow;
-  } catch (e) { return false; }
-};
-
-/* 把结果写到 html 上，CSS 用它切整套手机样式 */
-LR.syncMobile = function () {
-  const m = LR.isMobile();
-  document.documentElement.classList.toggle('is-mobile', m);
-  document.body.classList.toggle('is-mobile', m);
-  return m;
-};
+/* 手机端检测已搬到 index.html 的 <head>（要在样式生效前跑），此处不再重复实现 */
 /* ---------------- 波形峰值（给预览用） ---------------- */
 LR.computePeaks = function (buffer, count) {
   const chs = buffer.numberOfChannels;

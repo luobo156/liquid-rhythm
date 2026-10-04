@@ -18,10 +18,10 @@
   用固定宽度的 iframe 才能得到真正的 390 / 360 布局视口。
 -->
 <div class="row">
-  <div class="cell"><span class="cap">390 x 844 (iPhone 14)</span>
-    <iframe src="../index.html?mobile=1&noanim=1&diag=1" width="390" height="844"></iframe></div>
-  <div class="cell"><span class="cap">360 x 640 (小屏 Android)</span>
-    <iframe src="../index.html?mobile=1&noanim=1&diag=1" width="360" height="640"></iframe></div>
+  <div class="cell"><span class="cap">390 x 844 竖屏 —— 应显示「请横屏」</span>
+    <iframe src="../index.html?mobile=1&noanim=1" width="390" height="844"></iframe></div>
+  <div class="cell"><span class="cap">844 x 390 横屏 · 游戏内 —— 顶栏应消失</span>
+    <iframe src="../index.html?mobile=1&noanim=1&screen=game" width="844" height="390"></iframe></div>
 </div>
 <div id="probe">probing…</div>
 <script>
