@@ -487,7 +487,8 @@ function onMove(e) {
     if (changed) draw();
     return;
   }
-  if (drag.mode === 'scrub') { setPlayhead(xToT(p.x)); return; }
+  /* 拖动标尺时让视图跟着播放头走：手机上（没有滚轮）这是唯一能横向平移的手势 */
+  if (drag.mode === 'scrub') { setPlayhead(xToT(p.x)); follow(); draw(); return; }
   const n = drag.n;
   if (drag.mode === 'move') {
     const t = snapT(xToT(p.x) - drag.grabT);

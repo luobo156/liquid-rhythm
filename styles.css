@@ -824,22 +824,89 @@ body.no-drag .drag-grip{display:none}
 body.reduce-motion *{animation-duration:.01ms!important;transition-duration:.14s!important}
 body.reduce-motion .bg__blob{animation:none}
 
-/* ============ 窄屏强制布局（放最后，确保覆盖前面所有规则） ============ */
-@media (max-width: 820px){
-  .screen{padding:6px}
-  .screen--menu,.screen--setup,.screen--result{align-items:stretch;justify-content:flex-start}
-  .hero,.panel,.modecards,.mcard{
-    width:calc(100vw - 20px) !important;
-    max-width:calc(100vw - 20px) !important;
-    margin-left:0 !important;
-    margin-right:0 !important;
-  }
-  .hero{margin-top:0 !important;padding:16px 12px !important;border-radius:22px !important}
-  .modecards{flex-direction:column !important;margin-bottom:0 !important;gap:10px !important}
-  .mcard{flex:0 0 auto !important}
-  .panel{padding:12px !important}
-  .hero__title{font-size:clamp(24px,8vw,34px) !important}
-  .drop{flex-direction:column !important;text-align:center !important;padding:12px !important}
-  .drop__txt{text-align:center}
-  .opts{grid-template-columns:1fr !important}
+/* ============================================================
+   手机端
+   由 JS 检测后在 <html> 上加 .is-mobile（见 core.js 的 LR.syncMobile）。
+   用 class 而不是媒体查询：手机横屏时宽度可能超过任何断点，class 更可靠。
+   目标 ① 一屏放下更多内容 ② 能顺畅上下滑动 ③ 不参与窗口拖拽
+   注意：游戏画布不缩放 —— 它按元素尺寸设内部分辨率，缩放会糊。
+   ============================================================ */
+html.is-mobile body{font-size:13px}
+html.is-mobile .drag-grip{display:none!important}
+html.is-mobile .draggable{cursor:default}
+html.is-mobile #rowDrag{display:none}   /* 手机端拖拽已禁用，这个开关留着只会让人困惑 */
+
+/* ---- 滚动：flex 里的 margin:auto 配合 overflow:auto 会让顶部内容划不到，
+       所以手机端统一改成 flex-start + stretch，并清掉 auto 边距 ---- */
+html.is-mobile .screen{
+  justify-content:flex-start;
+  align-items:stretch;
+  gap:10px;
+  padding:8px;
+  padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));
+  overflow-y:auto;
+  overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior-y:contain;
 }
+/* 游戏与编辑器自己管布局，不要外层滚动 */
+html.is-mobile .screen--game,
+html.is-mobile .screen--editor{overflow:hidden;padding:6px}
+html.is-mobile .hero,
+html.is-mobile .panel,
+html.is-mobile .modecards{width:100%;max-width:100%;margin-left:0;margin-right:0}
+html.is-mobile .hero{margin-top:0!important}
+html.is-mobile .modecards{margin-bottom:0!important;flex-direction:column}
+
+/* ---- 顶栏与模式切换 ---- */
+html.is-mobile .topbar{padding:7px 9px;gap:8px}
+html.is-mobile .brand__text b{font-size:12.5px}
+html.is-mobile .brand__text i{display:none}
+html.is-mobile .iconbtn{width:30px;height:30px;border-radius:9px;font-size:13px}
+html.is-mobile .modes{padding:3px}
+html.is-mobile .modes .chip{padding:5px 9px;font-size:11.5px;border-radius:9px}
+
+/* ---- 主菜单 ---- */
+html.is-mobile .hero{padding:14px 12px;border-radius:20px}
+html.is-mobile .hero__title{font-size:clamp(23px,7.4vw,31px)}
+html.is-mobile .hero__sub{font-size:12px;line-height:1.6;margin-bottom:10px;max-width:none}
+html.is-mobile .drop{padding:11px;gap:8px;border-radius:14px}
+html.is-mobile .drop__txt b{font-size:12.5px}
+html.is-mobile .drop__txt small{font-size:10.5px}
+html.is-mobile .hero__foot{gap:8px;flex-wrap:wrap}
+html.is-mobile .btn{padding:8px 12px;font-size:12.5px;border-radius:11px}
+html.is-mobile .modecards{gap:8px}
+html.is-mobile .mcard{padding:10px;border-radius:16px}
+
+/* ---- 谱面预览 / 结果页 ---- */
+html.is-mobile .panel{padding:12px;border-radius:20px}
+html.is-mobile .panel__head h2{font-size:16px}
+html.is-mobile .panel__sub{font-size:10.5px}
+html.is-mobile .pill{padding:3px 7px;font-size:10.5px}
+html.is-mobile .opts{gap:8px}
+html.is-mobile .opt label{font-size:11.5px}
+html.is-mobile .chip{padding:6px 9px;font-size:11.5px}
+html.is-mobile .panel__foot{gap:7px;flex-wrap:wrap}
+html.is-mobile .panel__foot .btn{flex:1 1 auto}
+html.is-mobile .res__grade{font-size:44px}
+html.is-mobile .pickrow{grid-template-columns:1fr}
+
+/* ---- 设置抽屉 / 键位表 / 遮罩 ---- */
+html.is-mobile .sheet{border-radius:20px;max-height:90vh}
+html.is-mobile .sheet__head{padding:14px 14px 6px}
+html.is-mobile .sheet__head h3{font-size:15.5px}
+html.is-mobile .sheet__tip{padding:0 14px 8px;font-size:11px}
+html.is-mobile .sheet__body{padding:4px 14px 12px;gap:12px}
+html.is-mobile .sheet__foot{padding:10px 14px 14px;gap:8px}
+html.is-mobile .kbkey{min-width:54px;padding:8px 6px;font-size:11.5px}
+html.is-mobile .busy__card{padding:18px 20px;min-width:min(300px,88vw)}
+html.is-mobile .pausecard{padding:18px 20px;min-width:min(300px,92vw)}
+html.is-mobile .wavewrap{height:70px}
+
+/* ---- 编辑器 ---- */
+html.is-mobile .edwrap{gap:6px}
+html.is-mobile .edbar{padding:6px 8px;gap:6px;border-radius:13px}
+html.is-mobile .edbar__right{margin-left:0;width:100%}
+html.is-mobile .edtitle b{font-size:12.5px;max-width:56vw}
+html.is-mobile .edhint{display:none}
+html.is-mobile .edstage{border-radius:11px}

@@ -223,7 +223,8 @@ const Drag = {
     document.body.classList.toggle('no-drag', !this.enabled);
     if (!this.enabled) {
       for (let i = 0; i < this.els.length; i++) {
-        if (this.els[i].classList.contains('is-placed')) this.els[i].classList.remove('is-placed');
+        /* 必须用 free()：place() 写的是内联 position:fixed，只移 class 的话元素会永远钉在屏幕上 */
+        free(this.els[i]);
       }
     } else {
       for (let i = 0; i < this.els.length; i++) {

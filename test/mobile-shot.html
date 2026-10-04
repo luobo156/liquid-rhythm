@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>Mobile Shot</title>
+<style>
+  html,body{margin:0;background:#05070c;font:12px ui-monospace,Consolas,monospace;color:#8fa3bd}
+  .row{display:flex;gap:18px;padding:14px;align-items:flex-start}
+  .cell{display:flex;flex-direction:column;gap:6px}
+  .cap{color:#5f7a96}
+  iframe{border:1px solid rgba(255,255,255,.14);border-radius:8px;background:#05070c;display:block}
+</style>
+</head>
+<body>
+<!--
+  headless Chrome 在 Windows 上有 500px 的最小窗口宽度，
+  直接 --window-size=390 拿到的是「500px 布局裁到 390」，不是真实手机视口。
+  用固定宽度的 iframe 才能得到真正的 390 / 360 布局视口。
+-->
+<div class="row">
+  <div class="cell"><span class="cap">390 x 844 (iPhone 14)</span>
+    <iframe src="../index.html?mobile=1&noanim=1&diag=1" width="390" height="844"></iframe></div>
+  <div class="cell"><span class="cap">360 x 640 (小屏 Android)</span>
+    <iframe src="../index.html?mobile=1&noanim=1&diag=1" width="360" height="640"></iframe></div>
+</div>
+<div id="probe">probing…</div>
+<script>
+/* 把每个 iframe 里的诊断标题汇总到本页，便于 dump-dom 读取。
+   需要 --allow-file-access-from-files 才能跨 file:// iframe 读 contentDocument。 */
+setTimeout(function () {
+  const out = [];
+  document.querySelectorAll('iframe').forEach(function (f, i) {
+    try {
+      const t = f.contentDocument && f.contentDocument.title;
+      out.push('#' + i + ' ' + (t || '(空)'));
+    } catch (e) { out.push('#' + i + ' 读不到: ' + e.message); }
+  });
+  document.getElementById('probe').textContent = out.join('\n');
+  document.title = 'PROBE ' + out.join(' ;; ');
+}, 3500);
+</script></body>
+</html>

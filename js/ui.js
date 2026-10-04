@@ -947,7 +947,7 @@ function bind() {
   });
   $('#setDrag').addEventListener('click', function () {
     S.dragUI = !S.dragUI; save(); syncSettingsUI();
-    if (LR.Drag) LR.Drag.setEnabled(S.dragUI);
+    if (LR.Drag) LR.Drag.setEnabled(S.dragUI && !LR.isMobile());
     toast(S.dragUI ? '现在可以拖动卡片了' : '已锁定布局');
   });
   $('#btnResetLayout').addEventListener('click', function () {
@@ -1050,6 +1050,7 @@ setInterval(function () {
 
 /* ---------------- 启动 ---------------- */
 function boot() {
+  LR.syncMobile();          // 先判定手机端：CSS 与拖拽都依赖这个结果
   /* 调试/分享用：?bevel=40&scale=90&disp=0.8&lensblur=12&tint=0.15 */
   try {
     const q = new URLSearchParams(location.search);
@@ -1063,7 +1064,8 @@ function boot() {
   if (LR.Glass) LR.Glass.init();
   if (LR.Backdrop) LR.Backdrop.init(S);
   bind();
-  if (LR.Drag) LR.Drag.init(S);
+  /* 手机端不挂拖拽：手指拖窗口没有意义，而且会抢走触摸滑动 */
+  if (LR.Drag) LR.Drag.init({ dragUI: S.dragUI !== false && !LR.isMobile() });
   applySettings();
   syncSettingsUI();
   setMode('fall', true);
@@ -1099,6 +1101,28 @@ function boot() {
             '|pf=' + (pcs.filter || 'none') +
             '|pop=' + pcs.opacity + '|pwi=' + pcs.willChange);
         });
+        /* 手机端诊断：是否判定为手机、拖拽是否已禁用、当前屏能不能滚 */
+        out.push('mobile=' + LR.isMobile() + ' dragEnabled=' + (LR.Drag ? LR.Drag.enabled : 'n/a'));
+        var sc = document.querySelector('.screen.is-active');
+        if (sc) {
+          out.push('screen=' + (sc.id || '?') + ' scrollH=' + sc.scrollHeight +
+            ' clientH=' + sc.clientHeight +
+            ' canScroll=' + (sc.scrollHeight > sc.clientHeight + 1) +
+            ' overflowY=' + getComputedStyle(sc).overflowY);
+        }
+        /* 找出比视口还宽的元素：横向溢出就是这么来的 */
+        var vw = document.documentElement.clientWidth;
+        var wide = [];
+        document.querySelectorAll('body *').forEach(function (el) {
+          if (el.closest('.svgdefs')) return;
+          var r = el.getBoundingClientRect();
+          if (r.width > vw + 1 || r.right > vw + 1 || r.left < -1) {
+            if (el.offsetParent === null && getComputedStyle(el).position !== 'fixed') return;
+            wide.push((el.id || el.className.toString().split(' ').slice(0, 2).join('.')) +
+              '[' + Math.round(r.left) + ',' + Math.round(r.right) + ']w' + Math.round(r.width));
+          }
+        });
+        out.push('vw=' + vw + ' overflow=' + (wide.length ? wide.slice(0, 6).join(' | ') : 'none'));
         document.title = 'DIAG ' + out.join(' ;; ');
       }, 1800);
     }
@@ -1113,6 +1137,19 @@ function boot() {
 }
 /* exposed for editor.js */
   LR.ui = { toast: toast, refreshChartMeta: refreshChartMeta };
+
+  /* 旋转屏幕或改窗口尺寸后重新判定：从手机变回桌面要能恢复拖拽 */
+  window.addEventListener('resize', function () {
+    const was = document.documentElement.classList.contains('is-mobile');
+    const now = LR.syncMobile();
+    if (now !== was) {
+      if (LR.Drag) LR.Drag.setEnabled(S.dragUI && !now);
+      if (LR.Glass) LR.Glass.refresh();
+      if (RT.chart) requestAnimationFrame(drawWaveStatic);
+      if (currentScreen === 'editor' && LR.Editor) LR.Editor.layout();
+    }
+  });
+  window.addEventListener('orientationchange', function () { setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 220); });
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);
