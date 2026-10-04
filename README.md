@@ -225,7 +225,18 @@ python -m http.server 8000
 > **测量陷阱**：无头 Chrome 在 Windows 上有 **500px 的最小窗口宽度**，
 > 所以 `--window-size=390` 拿到的是「500px 布局裁到 390」，看起来像横向溢出，
 > 其实不是。想量真实的 390 / 360 得用固定宽度的 iframe —— 见 `test/mobile-shot.html`。
+## 自定义
+
+顶栏模式菜单左边的 GitHub 图标指向本仓库，地址写在 `index.html` 里，搜 `ghLink` 就能找到：
+
+```html
+<a class="modes__gh" id="ghLink" href="https://github.com/luobo156/liquid-rhythm" ...>
+```
+
+fork 之后换成自己的仓库地址即可。
+
 ## 项目结构
+
 
 
 ```

@@ -265,6 +265,18 @@ body.perf-game .bg__blob{animation-play-state:paused}
   will-change:transform,width;
 }
 .modes .chip{position:relative;z-index:1;background:none;border:0;box-shadow:none;padding:8px 16px}
+/* 顶栏里的 GitHub 仓库链接。放在 chip 前面不影响 .modes__glider：
+   它按 chip.offsetLeft 定位，前面多了兄弟元素时 chip 和 glider 一起位移，相对关系不变。 */
+.modes__gh{
+  position:relative;z-index:1;flex:0 0 auto;
+  display:grid;place-items:center;
+  width:32px;height:32px;border-radius:999px;
+  color:var(--txt-2);text-decoration:none;
+  transition:background var(--t-2) var(--e-expo),color var(--t-2) var(--e-expo),transform var(--t-2) var(--e-back);
+}
+.modes__gh svg{display:block}
+.modes__gh:hover{background:rgba(255,255,255,.13);color:#fff;transform:translateY(-1px)}
+.modes__gh:active{transform:scale(.92)}
 .modes .chip.is-on{color:#fff;text-shadow:0 1px 8px rgba(0,0,0,.4)}
 
 .topbar__right{display:flex;gap:8px}
@@ -871,6 +883,8 @@ html.is-mobile .brand__text i{display:none}
 html.is-mobile .iconbtn{width:30px;height:30px;border-radius:9px;font-size:13px}
 html.is-mobile .modes{padding:3px}
 html.is-mobile .modes .chip{padding:5px 9px;font-size:11.5px;border-radius:9px}
+html.is-mobile .modes__gh{width:26px;height:26px}
+html.is-mobile .modes__gh svg{width:13px;height:13px}
 
 /* ---- 主菜单：整体压紧，目标是一屏看全、不用滑动 ---- */
 html.is-mobile .hero{padding:11px 11px 12px;border-radius:18px;gap:0}

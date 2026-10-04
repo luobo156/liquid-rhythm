@@ -177,7 +177,11 @@ function keyLabel(code) {
 function setMode(m, silent) {
   if (currentScreen === 'game' && !silent) { toast('游戏中不能切换玩法'); return; }
   mode = m;
-  $$('#modeNav .chip').forEach(function (c) { c.classList.toggle('is-on', c.dataset.mode === m); });
+  $$('#modeNav .chip').forEach(function (c) {
+    const on = c.dataset.mode === m;
+    c.classList.toggle('is-on', on);
+    c.setAttribute('aria-pressed', String(on));
+  });
   $$('.mcard').forEach(function (c) { c.classList.toggle('is-on', c.dataset.mode === m); });
   moveGlider();
   const lanesRow = $('#optLanes').closest('.opt');
