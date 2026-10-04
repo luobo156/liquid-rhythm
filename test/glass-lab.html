@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>Glass Lab 2</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:-apple-system,"Segoe UI",system-ui,sans-serif;overflow:hidden}
+  .back{position:fixed;inset:0;background:
+    radial-gradient(60% 60% at 12% 18%,#2f5cff,transparent 62%),
+    radial-gradient(50% 50% at 88% 12%,#ff4fa3,transparent 62%),
+    radial-gradient(62% 70% at 72% 92%,#12d6a0,transparent 62%),
+    linear-gradient(160deg,#0a1030,#1b0a2e 55%,#04121c)}
+  /* 大字号 + 细密文字，专门用来观察边缘压缩与色散 */
+  .words{position:fixed;left:0;right:0;top:270px;display:flex;justify-content:center;gap:48px;
+    font-size:104px;font-weight:800;letter-spacing:-3px;color:#fff}
+  .words i{font-style:normal;color:#ff5252}
+  .words b{font-weight:800;color:#0b0b0b}
+  .fine{position:fixed;left:0;right:0;top:410px;text-align:center;font-size:15px;line-height:1.9;
+    color:#fff;opacity:.9;letter-spacing:.5px}
+  .fine span{color:#ffe08a}
+  .grid{position:fixed;inset:0;opacity:.5;
+    background-image:linear-gradient(rgba(255,255,255,.5) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.5) 1px,transparent 1px);
+    background-size:36px 36px;
+    mask-image:linear-gradient(#000,transparent 60%);-webkit-mask-image:linear-gradient(#000,transparent 60%)}
+  .row{position:fixed;left:0;right:0;top:120px;display:flex;flex-wrap:wrap;gap:30px 26px;justify-content:center;padding:0 40px;z-index:5}
+  .cell{width:310px}
+  .cap{font-size:11.5px;color:#fff;opacity:.85;margin:0 0 6px 4px;font-family:ui-monospace,monospace}
+  .pill{position:relative;height:104px;border-radius:28px;overflow:hidden}
+  .pill .lens{position:absolute;inset:0;border-radius:inherit;background:rgba(255,255,255,.05)}
+  .pill .edge{position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.7),inset 1px 0 0 rgba(255,255,255,.3),
+      inset -1px 0 0 rgba(255,255,255,.3),inset 0 -1px 0 rgba(255,255,255,.24)}
+  .pill .shadow{position:absolute;inset:0;border-radius:inherit;box-shadow:0 18px 40px -16px rgba(0,0,0,.8);pointer-events:none}
+  .lbl{position:absolute;left:18px;bottom:14px;font-size:17px;font-weight:800;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.55);z-index:3}
+  .blur{backdrop-filter:blur(4px) saturate(1.5) brightness(1.05);-webkit-backdrop-filter:blur(4px) saturate(1.5) brightness(1.05)}
+</style>
+</head>
+<body>
+<div class="back"></div><div class="grid"></div>
+<div class="words"><b>Week</b><i>Month</i><span>Year</span></div>
+<div class="fine">The quick brown fox jumps over the lazy dog · 细密文字观察边缘压缩与色散 · <span>0123456789</span> · ABCDEFGHIJKLMNOPQRSTUVWXYZ</div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs id="defs"></defs></svg>
+<div class="row" id="row"></div>
+
+<script>
+const NS = 'http://www.w3.org/2000/svg';
+const VARIANTS = [
+  ['A', 'A · 只模糊 + 细边（基准）'],
+  ['B', 'B · 透镜·向外采样（旧，有暗边）'],
+  ['C', 'C · 透镜·向内采样（放大镜）'],
+  ['D', 'D · 向内 + RGB 色散'],
+  ['E', 'E · 向内·窄斜面 强位移'],
+  ['F', 'F · 向内 + 微弱湍流抖动']
+];
+document.getElementById('row').innerHTML = VARIANTS.map(v =>
+  `<div class="cell"><p class="cap">${v[1]}</p><div class="pill" id="${v[0]}">
+     <div class="lens blur"></div><div class="edge"></div><div class="shadow"></div><div class="lbl">Month</div>
+   </div></div>`).join('');
+
+function sdfRR(px, py, w, h, r) {
+  const qx = Math.abs(px - w / 2) - (w / 2 - r);
+  const qy = Math.abs(py - h / 2) - (h / 2 - r);
+  const ax = Math.max(qx, 0), ay = Math.max(qy, 0);
+  return Math.sqrt(ax * ax + ay * ay) + Math.min(Math.max(qx, qy), 0) - r;
+}
+/* inward=true → 位移指向内侧：采到的永远是元素内部，不会有越界暗边，且像放大镜 */
+function lensMap(w, h, radius, bevel, inward, power) {
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(w, h), d = img.data;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const fx = x + 0.5, fy = y + 0.5;
+      const t = Math.max(0, Math.min(1, -sdfRR(fx, fy, w, h, radius) / bevel));
+      const m = Math.pow(1 - t, power) * 0.95;
+      const gx = sdfRR(fx + 1, fy, w, h, radius) - sdfRR(fx - 1, fy, w, h, radius);
+      const gy = sdfRR(fx, fy + 1, w, h, radius) - sdfRR(fx, fy - 1, w, h, radius);
+      const len = Math.hypot(gx, gy) || 1;
+      const s = inward ? -1 : 1;
+      const i = (y * w + x) * 4;
+      d[i]     = 128 + s * (gx / len) * m * 127;
+      d[i + 1] = 128 + s * (gy / len) * m * 127;
+      d[i + 2] = 128;
+      d[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return { url: cv.toDataURL('image/png'), w: w, h: h };
+}
+const W = 310, H = 104, R = 28;
+const mOut = lensMap(W, H, R, 30, false, 1.6);
+const mIn  = lensMap(W, H, R, 30, true, 1.6);
+const mInNarrow = lensMap(W, H, R, 18, true, 1.2);
+const mInSoft = lensMap(W, H, R, 46, true, 2.0);
+
+function addFilter(id, inner) {
+  const f = document.createElementNS(NS, 'filter');
+  f.setAttribute('id', id);
+  f.setAttribute('x', '-20%'); f.setAttribute('y', '-25%');
+  f.setAttribute('width', '140%'); f.setAttribute('height', '150%');
+  f.setAttribute('color-interpolation-filters', 'sRGB');
+  f.innerHTML = inner;
+  document.getElementById('defs').appendChild(f);
+}
+const img = (m, res) => `<feImage href="${m.url}" xlink:href="${m.url}" x="0" y="0" width="${m.w}" height="${m.h}" preserveAspectRatio="none" result="${res}"/>`;
+const disp = (inRef, mRef, s, res) => `<feDisplacementMap in="${inRef}" in2="${mRef}" scale="${s}" xChannelSelector="R" yChannelSelector="G"${res ? ` result="${res}"` : ''}/>`;
+const cm = k => `<feColorMatrix in="d${k}" type="matrix" values="${k === 'R' ? '1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0' : k === 'G' ? '0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0' : '0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0'}" result="c${k}"/>`;
+
+addFilter('fOut',   () => img(mOut, 'm') + disp('SourceGraphic', 'm', 52));
+addFilter('fIn',    () => img(mIn, 'm') + disp('SourceGraphic', 'm', 52));
+addFilter('fInRGB', () => img(mIn, 'm') + disp('SourceGraphic', 'm', 66, 'dR') + cm('R') +
+                          disp('SourceGraphic', 'm', 52, 'dG') + cm('G') +
+                          disp('SourceGraphic', 'm', 38, 'dB') + cm('B') +
+                          `<feBlend in="cR" in2="cG" mode="screen" result="rg"/><feBlend in="rg" in2="cB" mode="screen"/>`);
+addFilter('fNarrow',() => img(mInNarrow, 'm') + disp('SourceGraphic', 'm', 78));
+addFilter('fTurb',  () => img(mInSoft, 'm') + disp('SourceGraphic', 'm', 44, 'dl') +
+                          `<feTurbulence type="fractalNoise" baseFrequency="0.016 0.024" numOctaves="2" seed="5" result="n"/>` +
+                          `<feGaussianBlur in="n" stdDeviation="2.2" result="sn"/>` +
+                          disp('dl', 'sn', 13));
+
+const F = { A: '', B: 'url(#fOut)', C: 'url(#fIn)', D: 'url(#fInRGB)', E: 'url(#fNarrow)', F: 'url(#fTurb)' };
+Object.keys(F).forEach(k => {
+  const el = document.querySelector('#' + k + ' .lens');
+  if (F[k]) el.style.filter = F[k];
+});
+</script>
+</body>
+</html>

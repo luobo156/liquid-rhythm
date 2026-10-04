@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>Backdrop Root Lab</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;font-family:system-ui,sans-serif}
+  .bg{position:fixed;inset:0;background:
+    repeating-linear-gradient(58deg,rgba(255,255,255,.5) 0 9px,transparent 9px 30px),
+    repeating-linear-gradient(-58deg,rgba(0,0,0,.42) 0 7px,transparent 7px 26px),
+    linear-gradient(150deg,#12203f,#3a1230 55%,#06131a)}
+  .txt{position:fixed;inset:0;display:grid;place-content:center;font-size:42px;font-weight:800;color:#fff;text-align:center;line-height:1.35}
+  .row{position:fixed;left:0;right:0;top:60px;display:flex;gap:26px;justify-content:center;z-index:5}
+  .cell{width:330px}
+  .cap{font:11.5px ui-monospace,monospace;color:#fff;margin-bottom:6px}
+  .box{position:relative;height:150px;border-radius:26px;border:1px solid rgba(255,255,255,.3);overflow:hidden}
+  .lens{position:absolute;inset:0;border-radius:inherit;background:rgba(255,255,255,.06);
+    backdrop-filter:blur(10px) saturate(1.6) brightness(1.1);
+    -webkit-backdrop-filter:blur(10px) saturate(1.6) brightness(1.1)}
+  /* A: 现在 app 里的情况 —— 祖先有 filter:blur(0)，外层还有 isolation:isolate */
+  #A .screenlike{position:absolute;inset:0;filter:blur(0)}
+  #A .box{isolation:isolate}
+  /* B: 只去掉祖先的 filter */
+  #B .screenlike{position:absolute;inset:0}
+  #B .box{isolation:isolate}
+  /* C: 只去掉 isolation */
+  #C .screenlike{position:absolute;inset:0;filter:blur(0)}
+  /* D: 两个都去掉 */
+  #D .screenlike{position:absolute;inset:0}
+  /* E: 不用子层，backdrop-filter 直接放玻璃自己身上（v0.1 的做法） */
+  #E .box{isolation:isolate;backdrop-filter:blur(10px) saturate(1.6) brightness(1.1);
+    -webkit-backdrop-filter:blur(10px) saturate(1.6) brightness(1.1);background:rgba(255,255,255,.06)}
+  #E .lens{display:none}
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<div class="txt">Week Month Year<br><span style="font-size:20px">The quick brown fox · 0123456789</span></div>
+<div class="row" id="row"></div>
+<script>
+const V = [
+  ['A', 'A · filter:blur(0) 祖先 + isolation（= 现在 app）'],
+  ['B', 'B · 去掉祖先 filter'],
+  ['C', 'C · 去掉 isolation'],
+  ['D', 'D · 两个都去掉'],
+  ['E', 'E · backdrop-filter 直接放玻璃自己身上']
+];
+document.getElementById('row').innerHTML = V.map(v =>
+  `<div class="cell"><p class="cap">${v[1]}</p><div class="box" id="${v[0]}">
+     <div class="screenlike"><div class="lens"></div></div>
+   </div></div>`).join('');
+</script>
+</body>
+</html>

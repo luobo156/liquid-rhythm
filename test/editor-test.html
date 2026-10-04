@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>Editor Test</title>
+<style>
+  body{background:#0b0d12;color:#dfe6f2;font:12.5px/1.6 ui-monospace,Consolas,monospace;margin:0;padding:12px}
+  #stage{width:900px;height:260px;position:relative}
+  #edCanvas{display:block;width:100%;height:100%}
+  pre{white-space:pre-wrap;margin-top:10px}
+</style>
+</head>
+<body>
+<!-- editor.js 需要这些节点 -->
+<div id="stage"><canvas id="edCanvas"></canvas></div>
+<b id="edTitle"></b><i id="edDirty"></i><span id="edCount"></span><span id="edTime"></span>
+<button id="edPlay"></button><input type="file" id="edFile" hidden />
+<pre id="out">running…</pre>
+
+<script src="../js/core.js"></script>
+<script src="../js/editor.js"></script>
+<script>
+const lines = [];
+let pass = 0, fail = 0;
+function log(s) { lines.push(s); document.getElementById('out').textContent = lines.join('\n'); }
+function ok(cond, name, extra) {
+  if (cond) { pass++; log('  PASS  ' + name + (extra !== undefined ? '   (' + extra + ')' : '')); }
+  else { fail++; log('  FAIL  ' + name + (extra !== undefined ? '   (' + extra + ')' : '')); }
+}
+
+/* 造一份不依赖音频的假谱面 */
+function fakeChart() {
+  const beat = 60 / 128;
+  const notes = [];
+  for (let i = 0; i < 24; i++) {
+    notes.push({ t: 1.5 + i * beat, lane: i % 4, dur: (i % 7 === 0) ? beat * 2 : 0, kind: 'tap', s: 1, src: 'kick' });
+  }
+  return {
+    mode: 'fall', diff: 'hard', lanes: 4, bpm: 128, beat: beat, offset: 0.1,
+    duration: 30, notes: notes, mix: {}, density: 0.5
+  };
+}
+const stubAudio = {
+  buffer: { duration: 30 }, playing: false,
+  currentTime: function () { return 0; },
+  play: function () { this.playing = true; },
+  pause: function () { this.playing = false; },
+  stop: function () { this.playing = false; }
+};
+
+const chart = fakeChart();
+const E = LR.Editor;
+
+/* ---------- 1. 打开 ---------- */
+log('=== 1. 打开编辑器 ===');
+let saved = null;
+E.open({
+  chart: chart, songName: 'TestSong', analysis: null, audio: stubAudio,
+  onSave: function (c) { saved = c; }, onClose: function () {}
+});
+let st = E._state();
+ok(st.notes.length === 24, '载入原有音符', st.notes.length);
+ok(st.snap === 4, '默认吸附 1/4 拍', st.snap);
+ok(document.getElementById('edTitle').textContent.indexOf('TestSong') === 0, '标题写入曲名',
+   document.getElementById('edTitle').textContent);
+
+/* ---------- 2. 加音符并对齐网格 ---------- */
+log('\n=== 2. 加音符 + 网格吸附 ===');
+const beat = chart.beat;
+const n1 = E.addNote(2.0, 1);          // 2.0 不在 1/4 拍网格上，应被吸附
+st = E._state();
+ok(st.notes.length === 25, '音符数 +1', st.notes.length);
+ok(Math.abs(n1.t / (beat / 4) - Math.round(n1.t / (beat / 4))) < 1e-9, '落在 1/4 拍网格上', n1.t.toFixed(4));
+ok(n1.lane === 1, '轨道正确', n1.lane);
+ok(n1.dur === 0, '默认是单击音符');
+
+E.setSnap(8);
+const n2 = E.addNote(3.0, 2);
+ok(Math.abs(n2.t / (beat / 8) - Math.round(n2.t / (beat / 8))) < 1e-9, '切到 1/8 后按 1/8 吸附', n2.t.toFixed(4));
+ok((n2.t / (beat / 8)) % 1 === 0, '确实是 1/8 的整数倍');
+E.setSnap(4);
+ok(E.getSnap() === 4, '吸附切回 1/4');
+
+/* ---------- 3. 撤销 / 重做 ---------- */
+log('\n=== 3. 撤销 / 重做 ===');
+st = E._state();
+ok(st.notes.length === 26, '两次添加后 26 个', st.notes.length);
+E.undo();
+ok(E._state().notes.length === 25, '撤销一次 -> 25', E._state().notes.length);
+E.undo();
+ok(E._state().notes.length === 24, '撤销两次 -> 24', E._state().notes.length);
+E.redo();
+ok(E._state().notes.length === 25, '重做一次 -> 25', E._state().notes.length);
+E.redo();
+ok(E._state().notes.length === 26, '重做两次 -> 26', E._state().notes.length);
+
+/* ---------- 4. 删除 ---------- */
+log('\n=== 4. 删除 ===');
+E.undo(); E.undo();  // 回到 24
+st = E._state();
+const before = st.notes.length;
+E._setNotes(st.notes.slice(0, 5));
+ok(E._state().notes.length === 5, '精简到 5 个用于后续测试', E._state().notes.length);
+
+/* ---------- 5. 校验器：坏数据必须被挡住 ---------- */
+log('\n=== 5. 导入校验（坏数据） ===');
+const V = E._validate;
+ok(typeof V(null) === 'string', '拒绝 null');
+ok(typeof V({}) === 'string', '拒绝空对象');
+ok(typeof V({ format: 'something-else', notes: [] }) === 'string', '拒绝非本格式');
+ok(typeof V({ notes: 'nope' }) === 'string', '拒绝 notes 不是数组');
+ok(typeof V({ notes: [] }) === 'object', '接受空谱面（自己导出的空白谱能读回来）');
+ok(typeof V({ notes: [{ t: -1, lane: 0 }] }) === 'string', '拒绝负时间');
+ok(typeof V({ notes: [{ t: 1, lane: 99 }], lanes: 4 }) === 'string', '拒绝轨道越界');
+ok(typeof V({ notes: [{ t: 'abc', lane: 0 }] }) === 'string', '拒绝非数字时间');
+ok(typeof V({ notes: [null] }) === 'string', '拒绝 null 音符');
+
+/* ---------- 6. 校验器：好数据 ---------- */
+log('\n=== 6. 导入校验（好数据） ===');
+const good = {
+  format: 'liquid-rhythm-chart', version: 1, lanes: 6, bpm: 150, beat: 0.4,
+  notes: [{ t: 2, lane: 5, dur: 1 }, { t: 1, lane: 0, dur: 0 }, { t: 1.5, lane: 3 }]
+};
+const r = V(good);
+ok(typeof r === 'object' && r !== null, '接受合法谱面');
+ok(r && r.notes.length === 3, '解析出 3 个音符');
+ok(r && r.notes[0].t === 1 && r.notes[1].t === 1.5, '按时间排序', r && r.notes.map(function (x) { return x.t; }).join(','));
+ok(r && r.notes[2].dur === 1 && r.notes[2].kind === 'hold', '时长>0 标为长按');
+ok(r && r.notes[0].kind === 'tap', '时长为 0 标为单击');
+ok(r && r.lanes === 6, '采用文件里的轨数');
+
+/* ---------- 7. 保存回谱面 ---------- */
+log('\n=== 7. 保存 ===');
+E._setNotes([
+  { t: 2.5, lane: 1, dur: 0 },
+  { t: 1.25, lane: 3, dur: 0.8 }
+]);
+E.save();
+ok(saved === chart, 'onSave 收到同一个 chart 对象');
+ok(chart.edited === true, '标记为已手动编辑');
+ok(chart.notes.length === 2, '写回 2 个音符', chart.notes.length);
+ok(chart.notes[0].t === 1.25, '写回前先排序', chart.notes[0].t);
+ok(chart.notes[0].kind === 'hold' && chart.notes[0].dur === 0.8, '长按类型正确', chart.notes[0].kind);
+ok(chart.notes[1].kind === 'tap', '单击类型正确');
+
+/* ---------- 8. 画布真的画出东西了 ---------- */
+log('\n=== 8. 渲染 ===');
+E.layout();
+E.redraw();
+const cvs = document.getElementById('edCanvas');
+const ctx2 = cvs.getContext('2d');
+const data = ctx2.getImageData(0, 0, cvs.width, cvs.height).data;
+let nonBg = 0;
+for (let i = 0; i < data.length; i += 4 * 53) {
+  /* 背景是 #0a0d14 (10,13,20)，比它亮的就是画上去的东西 */
+  if (data[i] > 26 || data[i + 1] > 30 || data[i + 2] > 40) nonBg++;
+}
+ok(cvs.width > 300 && cvs.height > 100, '画布尺寸正常', cvs.width + 'x' + cvs.height);
+ok(nonBg > 40, '画布上有内容（网格/音符/播放头）', nonBg + ' 个采样点');
+
+/* ---------- 9. 空白谱面 ---------- */
+log('\n=== 9. 空白谱面（从零手写） ===');
+const emptyA = { bpm: 100, beat: 0.6, offset: 0.2, duration: 24 };
+const ec = LR.makeEmptyChart(emptyA, { mode: 'fall', diff: 'expert', lanes: 6, density: 0.5 });
+ok(ec.notes.length === 0, '一个音符都不放', ec.notes.length);
+ok(ec.lanes === 6 && ec.diff === 'expert', '沿用当前轨数与难度', ec.lanes + '/' + ec.diff);
+ok(ec.bpm === 100 && Math.abs(ec.beat - 0.6) < 1e-9, '沿用 BPM 与拍长');
+ok(Math.abs(ec.offset - 0.2) < 1e-9, '沿用偏移');
+ok(ec.bars === Math.ceil((24 - 0.2) / 2.4) + 1, '算出小节数', ec.bars);
+ok(ec.empty === true, '标记为空白谱面');
+const rc = LR.makeEmptyChart(emptyA, { mode: 'rd' });
+ok(rc.lanes === 1, '节奏医生式空白谱是单轨', rc.lanes);
+ok(rc.beat > 0 && isFinite(rc.beat), 'beat 合法（不会出现 0 导致除零）', rc.beat);
+E._setNotes([]);
+E.save();
+ok(chart.notes.length === 0, '空谱面可以保存回去', chart.notes.length);
+
+/* ---------- 10. 关闭 ---------- */
+log('\n=== 10. 关闭 ===');
+E.close();
+ok(stubAudio.playing === false, '关闭时停止播放');
+
+log('\n总: ' + pass + ' PASS / ' + fail + ' FAIL');
+log('DONE');
+</script>
+</body>
+</html>

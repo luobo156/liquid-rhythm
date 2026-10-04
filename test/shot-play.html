@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>Playfield Shot</title>
+<style>html,body{margin:0;height:100%;background:#04050a;overflow:hidden}#field{position:absolute;inset:0;width:100%;height:100%}</style>
+</head>
+<body>
+<canvas id="field"></canvas>
+<script src="../js/core.js"></script>
+<script src="../js/game.js"></script>
+<script>
+/* 截图用：造一张谱面，把时间停在指定位置画一帧，方便检查谱面可读性 */
+(function () {
+  const q = new URLSearchParams(location.search);
+  const mode = q.get('mode') || 'fall';
+  const lanes = mode === 'rd' ? 1 : (mode === 'side' ? 2 : (+q.get('lanes') || 4));
+  const at = parseFloat(q.get('t') || '9');
+
+  function makeAnalysis(step, count, start) {
+    const onsets = [];
+    for (let i = 0; i < count; i++) {
+      onsets.push({ t: start + i * step, s: 0.5 + 0.5 * Math.abs(Math.sin(i * 1.7)), c: (i % 4) / 3, f: i });
+    }
+    const dur = start + count * step + 3;
+    const frames = Math.ceil(dur * 86);
+    const bands = new Float32Array(frames * 6);
+    for (let f = 0; f < frames; f++) {
+      let e = 0;
+      for (let k = 0; k < onsets.length; k++) { const d = f / 86 - onsets[k].t; if (d < 0) break; const v = Math.exp(-d / 0.45); if (v > e) e = v; }
+      for (let b = 0; b < 6; b++) bands[f * 6 + b] = e * (0.6 + b * 0.08);
+    }
+    return { bpm: 128, beat: 0.469, offset: 0, duration: dur, onsets: onsets, beats: [], bands: bands, bandRate: 86, frames: frames };
+  }
+  const chart = LR.buildChart(makeAnalysis(0.2345, 120, 2), {
+    mode: mode, diff: 'hard', lanes: lanes, density: 0.7, holds: true, snap: false
+  });
+  const stub = { playing: true, currentTime: function () { return 0; }, pause: function () {}, resume: function () {}, stop: function () {} };
+
+  /* 必须在 rAF 里画：布局稳定后可能还会来一次 resize，_resize() 会重置画布把它清空 */
+  function render() {
+    LR.Game.setup({
+      chart: chart, mode: mode, lanes: lanes, speed: 1, offsetMs: 0, audio: stub,
+      keyLabels: lanes === 1 ? ['SPACE'] : ['D', 'F', 'J', 'K', 'S', 'L'].slice(0, lanes),
+      title: 'shot', auto: q.get('auto') === '1', onFinish: function () {}
+    });
+    LR.Game.running = true;
+    LR.Game.finished = false;
+    let t = Math.max(2, at - 2.2), hits = 0;
+    const notes = chart.notes.slice().sort(function (a, b) { return a.t - b.t; });
+    let i = 0;
+    for (; t < at; t += 1 / 120) {
+      LR.Game.time = t;
+      while (i < notes.length && notes[i].t <= t) {
+        if (!LR.Game.auto && hits % 11 !== 0) LR.Game.press(notes[i].lane);
+        i++; hits++;
+      }
+      LR.Game._update(1 / 120);
+    }
+    LR.Game.time = at;
+    LR.Game._update(1 / 120);
+    LR.Game._draw(1 / 120);
+    return notes.length;
+  }
+
+  function draw() {
+    render();
+    var g = LR.Game.geom;
+    var cv = document.getElementById('field');
+    var ctx2 = cv.getContext('2d');
+    var d = ctx2.getImageData(0, 0, cv.width, cv.height).data;
+    var bright = 0;
+    for (var k = 0; k < d.length; k += 4 * 37) {
+      if (Math.max(d[k], d[k + 1], d[k + 2]) > 40) bright++;
+    }
+    document.title = 'shot-ready W=' + LR.Game.W + ' H=' + LR.Game.H + ' notes=' + chart.notes.length + ' bright=' + bright;
+  }
+  window.addEventListener('resize', function () { requestAnimationFrame(draw); });
+  requestAnimationFrame(function () { requestAnimationFrame(draw); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>Drag Test</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;height:100vh;background:#111;color:#fff;font:13px system-ui;overflow:hidden}
+  .wrap{display:flex;flex-direction:column;gap:10px;padding:20px;align-items:center}
+  .glass{position:relative;width:320px;height:90px;border-radius:22px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08)}
+  .topbar{display:flex;gap:8px;padding:10px;border:1px solid rgba(255,255,255,.2);border-radius:14px}
+  button{font:inherit}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="glass" id="g1" data-drag="g1"><span style="padding:10px;display:block">卡片 1（可拖动）</span></div>
+  <div class="glass" id="g2" data-drag="g2">
+    <span style="padding:10px;display:block">卡片 2</span>
+    <button id="inner">内部按钮</button>
+    <input type="range" id="slider" />
+  </div>
+  <button class="glass" id="g3" data-drag="g3" data-mode="fall" style="height:60px">模式卡（本身是 button，应可拖）</button>
+  <div class="topbar" id="bar" data-drag="bar"><button>顶栏按钮</button><span style="padding:6px">顶栏空白处</span></div>
+</div>
+<pre id="out" style="position:fixed;left:10px;bottom:10px;color:#0f0;font:12px monospace;margin:0"></pre>
+
+<script src="../js/drag.js"></script>
+<script>
+const L = [], fail = { n: 0 };
+function ok(c, label, extra) {
+  if (!c) fail.n++;
+  L.push((c ? 'PASS  ' : 'FAIL  ') + label + (extra !== undefined ? '   ' + extra : ''));
+}
+function pd(el, x, y) { el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: x, clientY: y, button: 0, pointerId: 1 })); }
+function pm(x, y) { window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: x, clientY: y, pointerId: 1 })); }
+function pu(x, y) { window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: x, clientY: y, pointerId: 1 })); }
+
+try { localStorage.removeItem('lr.layout.v1'); } catch (e) {}
+const S = { dragUI: true };
+LR.Drag.init(S);
+ok(LR.Drag.els.length >= 4, '识别到可拖元素', LR.Drag.els.length + ' 个');
+
+/* 1. 拖动卡片 1 */
+const g1 = document.getElementById('g1');
+const r0 = g1.getBoundingClientRect();
+pd(g1, r0.left + 40, r0.top + 20);
+pm(r0.left + 140, r0.top + 120);
+pu(r0.left + 140, r0.top + 120);
+const r1 = g1.getBoundingClientRect();
+ok(Math.abs(r1.left - (r0.left + 100)) < 2 && Math.abs(r1.top - (r0.top + 100)) < 2,
+   '拖动位移正确', 'Δ=(' + (r1.left - r0.left).toFixed(0) + ',' + (r1.top - r0.top).toFixed(0) + ')');
+ok(g1.style.position === 'fixed', '拖后变成 fixed 定位');
+ok(g1.style.transform === 'none' || g1.style.transform === '', '落点把 transform 归零（避免模糊）', JSON.stringify(g1.style.transform));
+let saved = null;
+try { saved = JSON.parse(localStorage.getItem('lr.layout.v1') || '{}'); } catch (e) {}
+ok(saved && Object.keys(saved).length === 1, '位置已写入 localStorage', JSON.stringify(saved));
+
+/* 2. tiny 抖动不应触发拖动 */
+const g2 = document.getElementById('g2');
+const b0 = g2.getBoundingClientRect();
+pd(g2, b0.left + 40, b0.top + 20); pm(b0.left + 42, b0.top + 21); pu(b0.left + 42, b0.top + 21);
+ok(g2.style.position === '', '位移 < 5px 视为点击，不拖动');
+ok(!g2.classList.contains('is-placed'), '抖动后没有标记为已摆放');
+
+/* 3. 点内部按钮/滑杆不应拖动卡片 */
+const inner = document.getElementById('inner');
+const c0 = g2.getBoundingClientRect();
+pd(inner, c0.left + 40, c0.top + 60); pm(c0.left + 140, c0.top + 160); pu(c0.left + 140, c0.top + 160);
+ok(g2.style.position === '', '按在内部按钮上不会拖动父卡片');
+const slider = document.getElementById('slider');
+pd(slider, c0.left + 40, c0.top + 70); pm(c0.left + 140, c0.top + 170); pu(c0.left + 140, c0.top + 170);
+ok(g2.style.position === '', '按在滑杆上不会拖动父卡片');
+
+/* 4. 本身就是 button 的卡片应该能拖 */
+const g3 = document.getElementById('g3');
+const d0 = g3.getBoundingClientRect();
+pd(g3, d0.left + 30, d0.top + 30); pm(d0.left + 90, d0.top + 60); pu(d0.left + 90, d0.top + 60);
+const d1 = g3.getBoundingClientRect();
+ok(Math.abs(d1.left - (d0.left + 60)) < 2, 'button 卡片可以拖动', 'Δx=' + (d1.left - d0.left).toFixed(0));
+
+/* 5. 顶栏：按钮上不拖，空白处可拖 */
+const bar = document.getElementById('bar');
+const e0 = bar.getBoundingClientRect();
+const btn = bar.querySelector('button');
+pd(btn, e0.left + 10, e0.top + 10); pm(e0.left + 110, e0.top + 60); pu(e0.left + 110, e0.top + 60);
+ok(bar.style.position === '', '顶栏按钮上不拖动');
+pd(bar, e0.left + 200, e0.top + 20); pm(e0.left + 260, e0.top + 70); pu(e0.left + 260, e0.top + 70);
+ok(bar.style.position === 'fixed', '顶栏空白处可拖动');
+
+/* 6. 重置布局 */
+LR.Drag.reset();
+ok(g1.style.position === '' && bar.style.position === '', '重置后全部回到文档流');
+let s2 = {};
+try { s2 = JSON.parse(localStorage.getItem('lr.layout.v1') || '{}'); } catch (e) {}
+ok(Object.keys(s2).length === 0, '重置清空了存储');
+
+/* 7. 换尺寸后位置按比例还原 */
+try { localStorage.setItem('lr.layout.v1', JSON.stringify({ g1: { x: 0.5, y: 0.5, w: 0.25 } })); } catch (e) {}
+const D2 = LR.Drag;
+D2.init({ dragUI: true });
+ok(g1.classList.contains('is-placed') && g1.style.position === 'fixed', '重启后按存档恢复位置');
+ok(Math.abs(parseFloat(g1.style.left) - window.innerWidth * 0.5) < 3, '位置按视口比例还原',
+   'left=' + g1.style.left + ' 期望≈' + (window.innerWidth * 0.5));
+
+/* 8. 关闭拖动 */
+D2.setEnabled(false);
+ok(document.body.classList.contains('no-drag'), '关闭后加上 no-drag');
+const g2b = document.getElementById('g2');
+const f0 = g2b.getBoundingClientRect();
+pd(g2b, f0.left + 30, f0.top + 20); pm(f0.left + 130, f0.top + 120); pu(f0.left + 130, f0.top + 120);
+ok(g2b.style.position === '', '关闭后无法拖动');
+
+L.push('');
+L.push(fail.n === 0 ? 'DRAG TEST: ALL PASSED' : 'DRAG TEST: ' + fail.n + ' FAILED');
+document.getElementById('out').textContent = L.join('\n');
+console.log('DRAG_SUMMARY ' + JSON.stringify({ fail: fail.n }));
+</script>
+</body>
+</html>

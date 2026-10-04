@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>Glass Bench</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a0d18;overflow:hidden}
+  .wrap{position:absolute;inset:0;display:grid;place-content:center;gap:14px}
+  .glass{position:relative;width:520px;height:220px;border-radius:28px;border:1px solid rgba(255,255,255,.15)}
+  .glass.sm{width:240px;height:110px;border-radius:20px}
+  pre{color:#0f0;font:12px monospace;position:fixed;left:10px;top:10px;z-index:9;margin:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="glass" id="g1"></div>
+  <div class="glass sm" id="g2"></div>
+  <div class="glass sm" id="g3"></div>
+</div>
+<pre id="out">running…</pre>
+<script src="../js/glass.js"></script>
+<script>
+/* 对比两种位移图生成方式：旧版每个像素 5 次 SDF 求值，新版解析法线 1 次 */
+const L = [];
+function log(s) { L.push(s); }
+function sdfRR(px, py, w, h, r) {
+  const qx = Math.abs(px - w / 2) - (w / 2 - r);
+  const qy = Math.abs(py - h / 2) - (h / 2 - r);
+  const ax = Math.max(qx, 0), ay = Math.max(qy, 0);
+  return Math.sqrt(ax * ax + ay * ay) + Math.min(Math.max(qx, qy), 0) - r;
+}
+function sdfNormal(px, py, w, h, r, out) {
+  const hw = w / 2, hh = h / 2, sx = px - hw, sy = py - hh;
+  const ax = Math.abs(sx), ay = Math.abs(sy);
+  const qx = ax - (hw - r), qy = ay - (hh - r);
+  let d, nx, ny;
+  if (qx > 0 && qy > 0) { const len = Math.sqrt(qx*qx+qy*qy)||1; d = len-r; nx=(sx<0?-1:1)*qx/len; ny=(sy<0?-1:1)*qy/len; }
+  else if (qx > 0) { d=qx-r; nx=sx<0?-1:1; ny=0; }
+  else if (qy > 0) { d=qy-r; nx=0; ny=sy<0?-1:1; }
+  else { const m = qx>qy?qx:qy; d=m-r; if(qx>qy){nx=sx<0?-1:1;ny=0;}else{nx=0;ny=sy<0?-1:1;} }
+  out.d=d; out.nx=nx; out.ny=ny; return out;
+}
+function genOld(w, h, radius, bevel, power) {
+  const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
+  const ctx = cv.getContext('2d'); const img = ctx.createImageData(w,h); const d=img.data;
+  let i=0;
+  for (let y=0;y<h;y++) for (let x=0;x<w;x++) {
+    const fx=x+0.5, fy=y+0.5;
+    let t = -sdfRR(fx,fy,w,h,radius)/bevel; t = t<0?0:(t>1?1:t);
+    const m = Math.pow(1-t,power)*0.98;
+    const gx = sdfRR(fx+1,fy,w,h,radius)-sdfRR(fx-1,fy,w,h,radius);
+    const gy = sdfRR(fx,fy+1,w,h,radius)-sdfRR(fx,fy-1,w,h,radius);
+    const len = Math.hypot(gx,gy)||1;
+    d[i]=128-(gx/len)*m*127; d[i+1]=128-(gy/len)*m*127; d[i+2]=128; d[i+3]=255; i+=4;
+  }
+  ctx.putImageData(img,0,0); return cv.toDataURL('image/png');
+}
+function genNew(w, h, radius, bevel, power) {
+  const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
+  const ctx = cv.getContext('2d'); const img = ctx.createImageData(w,h); const d=img.data;
+  const tmp={d:0,nx:0,ny:0}; let i=0;
+  for (let y=0;y<h;y++) for (let x=0;x<w;x++) {
+    sdfNormal(x+0.5,y+0.5,w,h,radius,tmp);
+    let t = -tmp.d/bevel; t = t<0?0:(t>1?1:t);
+    const m = Math.pow(1-t,power)*0.98;
+    d[i]=128-tmp.nx*m*127; d[i+1]=128-tmp.ny*m*127; d[i+2]=128; d[i+3]=255; i+=4;
+  }
+  ctx.putImageData(img,0,0); return cv.toDataURL('image/png');
+}
+function time(fn, n) { const t0=performance.now(); for(let i=0;i<n;i++) fn(); return (performance.now()-t0)/n; }
+
+const W=520,H=220,R=28,B=30;
+// 预热
+genOld(60,60,10,8,1.6); genNew(60,60,10,8,1.6);
+const tOld = time(()=>genOld(W,H,R,B,1.6), 3);
+const tNew = time(()=>genNew(W,H,R,B,1.6), 3);
+log('位移图生成 520x220：旧(每像素 5 次 SDF) ' + tOld.toFixed(1) + 'ms  →  新(解析法线 1 次) ' + tNew.toFixed(1) + 'ms   提速 ' + (tOld/tNew).toFixed(1) + 'x');
+
+// 初始化：只应构建可见元素（3 个），且同尺寸共用滤镜
+const S = { quality:'high', glassLens:true, lensBevel:30, lensScale:56, lensDisp:0.55, lensBlur:9, lensTint:0.12 };
+let t0 = performance.now(); LR.Glass.init(); const tInit = performance.now()-t0;
+LR.Glass.P.enabled = true;
+LR.Glass.apply(S);
+t0 = performance.now(); LR.Glass.refresh(); const tRefresh = performance.now()-t0;
+log('init(): ' + tInit.toFixed(1) + 'ms   建了 ' + LR.Glass.stats.filters + ' 个滤镜 / ' + LR.Glass.stats.maps + ' 张位移图');
+log('refresh(): ' + tRefresh.toFixed(1) + 'ms（已建好时应当接近 0）');
+
+// 只改位移强度：不应重新生成位图
+t0 = performance.now();
+for (let i=0;i<50;i++) { S.lensScale = 40 + i; LR.Glass.apply(S); }
+const tScale = (performance.now()-t0)/50;
+const mapsAfterScale = LR.Glass.stats.maps;
+log('只改「折射位移强度」50 次：平均 ' + tScale.toFixed(3) + 'ms/次，位移图数量仍为 ' + mapsAfterScale + '（没有重新生成位图）');
+
+// 改斜面宽度：需要换位图，但同尺寸应复用
+t0 = performance.now();
+S.lensBevel = 44; LR.Glass.apply(S); LR.Glass.refresh();
+const tBevel = performance.now()-t0;
+log('改「斜面宽度」（需换位图）：' + tBevel.toFixed(1) + 'ms，位移图 ' + LR.Glass.stats.maps + ' 张，滤镜 ' + LR.Glass.stats.filters + ' 个（同尺寸共用）');
+
+// 尺寸变化
+t0 = performance.now();
+document.getElementById('g1').style.width = '560px';
+LR.Glass.resize();
+log('窗口/元素尺寸变化后 resize(): ' + (performance.now()-t0).toFixed(1) + 'ms');
+
+log('');
+log('BENCH DONE');
+document.getElementById('out').textContent = L.join('\n');
+document.title = 'bench-done';
+</script>
+</body>
+</html>

@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>E2E</title>
+<style>#field{width:1280px;height:800px;display:block}body{margin:0;background:#000}pre{color:#0f0;font:12px monospace}</style>
+</head>
+<body>
+<canvas id="field"></canvas>
+<pre id="out">running…</pre>
+<script src="../js/core.js"></script>
+<script src="../js/game.js"></script>
+<script>
+/* 确定性端到端测试：不依赖音频/用户输入，直接驱动 LR.Game 的判定与渲染。
+   谱面是手工造的，所以每个音符的时间、轨道都是已知的，可以断言精确结果。 */
+(function () {
+'use strict';
+var LR = window.LR;
+var lines = [], fail = 0;
+function ok(cond, label, extra) {
+  if (!cond) fail++;
+  lines.push((cond ? 'PASS  ' : 'FAIL  ') + label + (extra !== undefined ? '   ' + extra : ''));
+}
+function log(s) { lines.push(s); }
+
+/* ---------- 手工造谱：每 0.25s 一颗，4 轨轮转；长按单独测 ---------- */
+function makeAnalysis(step, count, start, opts) {
+  opts = opts || {};
+  var onsets = [];
+  for (var i = 0; i < count; i++) {
+    onsets.push({
+      t: start + i * step,
+      s: 0.5 + 0.5 * Math.abs(Math.sin(i * 1.7)),
+      c: opts.lane4 ? ((i % 4) / 3) : (i % 2),
+      f: i
+    });
+  }
+  var dur = start + count * step + 2;
+  var frames = Math.ceil(dur * 86);
+  /* 频段能量必须真实：长按判定就是读它。这里让每次起音后按指数衰减 */
+  var bands = new Float32Array(frames * 6);
+  if (opts.energy !== false) {
+    for (var f = 0; f < frames; f++) {
+      var tt = f / 86, e = 0;
+      for (var k = 0; k < onsets.length; k++) {
+        var d = tt - onsets[k].t;
+        if (d < 0) break;
+        var v = Math.exp(-d / 0.45);
+        if (v > e) e = v;
+      }
+      for (var b = 0; b < 6; b++) bands[f * 6 + b] = e * (0.6 + b * 0.08);
+    }
+  }
+  return {
+    bpm: 120, beat: 0.5, offset: 0, duration: dur,
+    onsets: onsets, beats: [], bands: bands,
+    bandRate: 86, frames: frames, env: [], envRate: 86
+  };
+}
+
+function chartFor(mode, opts) {
+  var A = makeAnalysis(0.25, 80, 2, { lane4: true });
+  return LR.buildChart(A, {
+    mode: mode, diff: 'expert', lanes: mode === 'rd' ? 1 : 4,
+    density: 1, holds: !!(opts && opts.holds), snap: false
+  });
+}
+/* 稀疏谱：音符间隔 1.2s，才有空间生成长按 */
+function sparseChart(mode) {
+  var A = makeAnalysis(1.2, 20, 2, { lane4: true });
+  return LR.buildChart(A, { mode: mode, diff: 'normal', lanes: 4, density: 0.5, holds: true, snap: false });
+}
+
+/* ---------- 用桩音频驱动游戏 ---------- */
+function makeGame(chart, mode) {
+  var G = LR.Game;
+  var stub = { playing: true, currentTime: function () { return 0; }, pause: function () {}, resume: function () {}, stop: function () {} };
+  G.setup({
+    chart: chart, mode: mode, lanes: chart.lanes, speed: 1, offsetMs: 0,
+    audio: stub, keyLabels: ['D', 'F', 'J', 'K'], title: 'e2e',
+    onFinish: function () {}
+  });
+  G.running = true;
+  G.paused = false;
+  G.finished = false;
+  return G;
+}
+
+/* policy: { offset: 击打偏差秒, skip: 不打的音符比例, release: 长按是否提前松手 } */
+function play(chart, mode, policy) {
+  var G = makeGame(chart, mode);
+  var notes = chart.notes.slice().sort(function (a, b) { return a.t - b.t; });
+  var idx = 0, held = -1, heldUntil = 0, drawErrors = 0, peakParticles = 0;
+  var end = notes.length ? notes[notes.length - 1].t + Math.max(0.6, notes[notes.length - 1].dur) + 1.0 : 3;
+  var dt = 1 / 120, step = 0;
+  for (var t = 0; t <= end; t += dt) {
+    G.time = t;
+    while (idx < notes.length && notes[idx].t + policy.offset <= t) {
+      var n = notes[idx++];
+      if (policy.skip && (idx % policy.skip === 0)) continue;
+      G.press(n.lane);
+      if (n.dur > 0.05) {
+        held = n.lane;
+        heldUntil = policy.release ? n.t + n.dur * 0.4 : n.t + n.dur + 0.1;
+      }
+    }
+    if (held >= 0 && t >= heldUntil) { G.release(held); held = -1; }
+    G._update(dt);
+    if (G.particles.length > peakParticles) peakParticles = G.particles.length;
+    /* 软件光栅化很慢，渲染抽查即可（每 0.5 秒一帧） */
+    if ((step++) % 60 === 0) {
+      try { G._draw(dt); } catch (e) { drawErrors++; if (drawErrors === 1) log('  draw error: ' + e.message); }
+    }
+  }
+  var st = G.stats();
+  st._drawErrors = drawErrors;
+  st._particles = peakParticles;
+  return st;
+}
+
+/* ================= 1. 全部命中 → 全 PERFECT ================= */
+log('=== 1. 判定：全部精准命中 ===');
+var ch = chartFor('fall', { holds: false });
+var r1 = play(ch, 'fall', { offset: 0 });
+log('  notes=' + r1.total + ' perfect=' + r1.counts.perfect + ' great=' + r1.counts.great +
+    ' good=' + r1.counts.good + ' miss=' + r1.counts.miss + ' combo=' + r1.maxCombo +
+    ' acc=' + (r1.acc * 100).toFixed(1) + '% grade=' + r1.grade + ' score=' + r1.score);
+ok(r1.counts.perfect === r1.total, '全部判为 PERFECT', r1.counts.perfect + '/' + r1.total);
+ok(r1.counts.miss === 0, '没有 MISS');
+ok(r1.maxCombo === r1.total, '连击数等于音符总数', r1.maxCombo + '/' + r1.total);
+ok(r1.acc > 0.999, '准确率 100%', r1.acc.toFixed(4));
+ok(r1.grade === 'S+', '评级 S+', r1.grade);
+ok(r1.score > 0, '得分大于 0', r1.score);
+ok(r1._drawErrors === 0, '渲染全程无异常');
+
+/* ================= 2. 判定窗口分层 ================= */
+log('\n=== 2. 判定窗口分层（±42 完美 / ±85 优秀 / ±125 良好 / >190 漏掉）===');
+[[0.03, 'perfect'], [0.065, 'great'], [0.105, 'good']].forEach(function (pair) {
+  var st = play(chartFor('fall', { holds: false }), 'fall', { offset: pair[0] });
+  var key = pair[1];
+  var others = ['perfect', 'great', 'good', 'miss'].filter(function (k) { return k !== key; });
+  var wrong = others.reduce(function (a, k) { return a + st.counts[k]; }, 0);
+  log('  +' + (pair[0] * 1000) + 'ms → ' + key + '=' + st.counts[key] + ' 其它=' + wrong);
+  ok(st.counts[key] === st.total, '+' + (pair[0] * 1000) + 'ms 全部判为 ' + key, st.counts[key] + '/' + st.total);
+});
+
+/* ================= 3. 完全不按 → 全 MISS ================= */
+log('\n=== 3. 完全不按 ===');
+var r3 = play(chartFor('fall', { holds: false }), 'fall', { offset: 0, skip: 1 });
+log('  miss=' + r3.counts.miss + '/' + r3.total + ' combo=' + r3.maxCombo + ' score=' + r3.score + ' grade=' + r3.grade);
+ok(r3.counts.miss === r3.total, '全部自动判 MISS', r3.counts.miss + '/' + r3.total);
+ok(r3.maxCombo === 0, '连击为 0');
+ok(r3.score === 0, '得分为 0', r3.score);
+ok(r3.grade === 'D', '评级 D', r3.grade);
+
+/* ================= 4. 极端提前敲不应吃掉音符 ================= */
+log('\n=== 4. 提前 0.4s 敲击 ===');
+var ch4 = chartFor('fall', { holds: false });
+var G4 = makeGame(ch4, 'fall');
+var n0 = ch4.notes[0];
+G4.time = n0.t - 0.4;
+G4.press(n0.lane);
+ok(n0.state === 0, '过早敲击不会消耗音符', 'state=' + n0.state);
+ok(G4.counts.miss === 0 && G4.counts.perfect === 0, '过早敲击不计入任何判定');
+/* 同一颗音符随后正常敲击应仍然可判 */
+G4.time = n0.t;
+G4.press(n0.lane);
+ok(n0.state === 1 && G4.counts.perfect === 1, '随后正常敲击依然判定成功');
+
+/* ================= 5. 长按尾判 ================= */
+log('\n=== 5. 长按音符 ===');
+var chHold = sparseChart('fall');
+var holds = chHold.notes.filter(function (n) { return n.dur > 0.05; }).length;
+var rHold = play(chHold, 'fall', { offset: 0 });
+var rEarly = play(chHold, 'fall', { offset: 0, release: true });
+var avgDur = chHold.notes.filter(function (n) { return n.dur > 0.05; })
+  .reduce(function (a, n) { return a + n.dur; }, 0) / Math.max(1, holds);
+log('  长按数=' + holds + '/' + chHold.notes.length + ' 平均时长=' + avgDur.toFixed(2) + 's | 按满: score=' + rHold.score +
+    ' perfectly=' + rHold.counts.perfect + '/' + rHold.total + ' | 提前松手: score=' + rEarly.score +
+    ' perfectly=' + rEarly.counts.perfect + '/' + rEarly.total);
+ok(holds > 0, '稀疏谱面里生成了长按', holds + '/' + chHold.notes.length);
+ok(avgDur >= 0.3 && avgDur <= 1.3, '长按时长在合理区间', avgDur.toFixed(2) + 's');
+ok(rHold.maxCombo === rHold.total, '按满长按时连击不断', rHold.maxCombo + '/' + rHold.total);
+ok(rHold.score > rEarly.score, '按满长按得分高于提前松手', rHold.score + ' > ' + rEarly.score);
+ok(rEarly.counts.miss === 0, '提前松手不会判 MISS（设计上宽容）', rEarly.counts.miss);
+
+/* ================= 6. 三种玩法都能跑通渲染与判定 ================= */
+log('\n=== 6. 三种玩法 ===');
+[['fall', '下落式'], ['side', '横向'], ['rd', '节奏医生式']].forEach(function (m) {
+  var c = chartFor(m[0], { holds: m[0] !== 'rd' });
+  var st = play(c, m[0], { offset: 0 });
+  log('  ' + m[1] + ': notes=' + st.total + ' perfect=' + st.counts.perfect + ' miss=' + st.counts.miss +
+      ' combo=' + st.maxCombo + ' 粒子=' + st._particles + ' drawErr=' + st._drawErrors);
+  ok(st.total > 0, m[1] + ' 有音符');
+  ok(st.counts.perfect === st.total, m[1] + ' 全部完美', st.counts.perfect + '/' + st.total);
+  ok(st._drawErrors === 0, m[1] + ' 渲染无异常');
+});
+
+/* ================= 7. 暂停 / 恢复 ================= */
+log('\n=== 7. 暂停与恢复 ===');
+var ch7 = chartFor('fall', { holds: false });
+var G7 = makeGame(ch7, 'fall');
+G7.time = ch7.notes[0].t;
+G7.pause();
+ok(G7.paused === true, 'pause() 生效');
+G7.press(ch7.notes[0].lane);
+ok(ch7.notes[0].state === 0, '暂停时敲击不生效');
+G7.resume();
+ok(G7.paused === false, 'resume() 生效');
+G7.press(ch7.notes[0].lane);
+ok(ch7.notes[0].state === 1, '恢复后敲击生效');
+
+/* ================= 8. 窗口尺寸变化 ================= */
+log('\n=== 8. 改变画布尺寸 ===');
+var cv = document.getElementById('field');
+var geomOk = true;
+[[900, 600], [1600, 1000], [420, 780]].forEach(function (sz) {
+  cv.style.width = sz[0] + 'px';
+  cv.style.height = sz[1] + 'px';
+  ['fall', 'side', 'rd'].forEach(function (mode) {
+    var c = chartFor(mode, { holds: false });
+    var G = makeGame(c, mode);
+    G.time = 3;
+    try { G._draw(0.016); } catch (e) { geomOk = false; log('  ' + sz + ' ' + mode + ' 报错: ' + e.message); }
+  });
+});
+ok(geomOk, '三种玩法在 900x600 / 1600x1000 / 420x780 下渲染都不报错');
+
+/* ================= 9. 自动演奏 ================= */
+log('\n=== 9. 自动演奏（AUTO） ===');
+(function () {
+  var c = chartFor('fall', { holds: true });
+  var G = makeGame(c, 'fall');
+  G.auto = true;
+  var t = 0, end = c.notes[c.notes.length - 1].t + 1.2;
+  var dt = 1 / 120, peak = 0;
+  for (; t <= end; t += dt) {
+    G.time = t;
+    G._update(dt);
+    if (G.particles.length > peak) peak = G.particles.length;
+  }
+  var st = G.stats();
+  log('  notes=' + st.total + ' perfect=' + st.counts.perfect + ' great=' + st.counts.great +
+      ' good=' + st.counts.good + ' miss=' + st.counts.miss + ' combo=' + st.maxCombo +
+      ' acc=' + (st.acc * 100).toFixed(1) + '%');
+  ok(st.counts.miss === 0, 'AUTO 不会漏音符', st.counts.miss);
+  ok(st.maxCombo === st.total, 'AUTO 连击全满', st.maxCombo + '/' + st.total);
+  ok(st.counts.perfect >= st.total * 0.85, 'AUTO 绝大多数是 PERFECT',
+     st.counts.perfect + '/' + st.total);
+  ok(st.acc > 0.95, 'AUTO 准确率 >95%', (st.acc * 100).toFixed(1) + '%');
+  ok(peak > 0, 'AUTO 也产生打击特效', peak + ' 粒子');
+})();
+
+/* ================= 输出 ================= */
+log('');
+log(fail === 0 ? 'E2E: ALL PASSED' : 'E2E: ' + fail + ' FAILED');
+document.getElementById('out').textContent = lines.join('\n');
+console.log('E2E_SUMMARY ' + JSON.stringify({ fail: fail, checks: lines.filter(function (l) { return l.indexOf('PASS') === 0 || l.indexOf('FAIL') === 0; }).length }));
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>真实示例曲 · 谱面结构检查</title>
+<style>body{background:#0b0d12;color:#dfe6f2;font:13px/1.7 ui-monospace,Consolas,monospace;padding:16px}
+pre{white-space:pre-wrap}</style>
+</head>
+<body>
+<pre id="out">running…</pre>
+<script src="../js/core.js"></script>
+<script>
+const lines = [];
+function log(s) { lines.push(s); document.getElementById('out').textContent = lines.join('\n'); }
+
+(async function () {
+  try {
+    const song = await LR.makeSampleSong();
+    const pcm = song.getChannelData(0);
+    const A = await LR.analyze({
+      sampleRate: song.sampleRate,
+      numberOfChannels: song.numberOfChannels,
+      length: song.length,
+      duration: song.duration,
+      getChannelData: function (i) { return song.getChannelData(i); }
+    }, function () {});
+
+    const beat = A.beat, off = A.offset, bar = beat * 4;
+    const nb = Math.ceil(A.duration / bar);
+    log('示例曲: ' + A.duration.toFixed(1) + 's  BPM=' + A.bpm.toFixed(1) +
+        '  起音=' + A.onsets.length + '  小节数=' + nb);
+    const kinds = {};
+    for (const o of A.onsets) kinds[o.kind] = (kinds[o.kind] || 0) + 1;
+    log('起音分类: ' + JSON.stringify(kinds));
+    log('');
+
+    for (const diff of ['easy', 'normal', 'hard', 'expert']) {
+      const c = LR.buildChart(A, { mode: 'fall', diff: diff, lanes: 4, density: 0.5, holds: true, snap: true });
+      const per = [];
+      for (let b = 0; b < nb; b++) {
+        const t0 = off + b * bar;
+        per.push(c.notes.filter(function (n) { return n.t >= t0 && n.t < t0 + bar; }).length);
+      }
+      let mg = 0;
+      for (let i = 1; i < c.notes.length; i++) mg = Math.max(mg, c.notes[i].t - c.notes[i - 1].t);
+      const g = beat / 2;
+      const onGrid = c.notes.filter(function (n) { return Math.abs(n.t / g - Math.round(n.t / g)) < 0.02; }).length;
+      const holds = c.notes.filter(function (n) { return n.dur > 0.05; }).length;
+      log(diff.padEnd(7) + ' ' + String(c.notes.length).padStart(3) + '个 ' +
+          (c.notes.length / A.duration).toFixed(2) + '/s  长按' + String(holds).padStart(2) +
+          '  最长留白' + mg.toFixed(1) + 's  留白小节' + c.mix.restBars + '/' + nb +
+          '  网格对齐' + (onGrid / Math.max(1, c.notes.length) * 100).toFixed(0) + '%');
+      log('        每小节: ' + per.join(' '));
+      log('');
+    }
+    log('DONE');
+  } catch (e) {
+    log('ERROR ' + (e && e.message) + '\n' + (e && e.stack));
+  }
+})();
+</script>
+</body>
+</html>

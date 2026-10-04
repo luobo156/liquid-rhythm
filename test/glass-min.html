@@ -1,0 +1,25 @@
+﻿<!DOCTYPE html><html><head><meta charset="utf-8"><title>t</title></head><body>
+<div class="glass" id="g" style="width:400px;height:200px;border-radius:20px"></div>
+<pre id="out"></pre>
+<script src="../js/glass.js"></script>
+<script>
+var L=[];
+function say(s){L.push(s);document.getElementById('out').textContent=L.join('\n');document.title='r:'+L.length;}
+try{
+  say('LR.Glass 存在: ' + (!!window.LR.Glass));
+  say('P.enabled 初始: ' + LR.Glass.P.enabled);
+  LR.Glass.init();
+  say('init 后 filters=' + LR.Glass.stats.filters + ' maps=' + LR.Glass.stats.maps);
+  say('glassDefs 存在: ' + !!document.getElementById('glassDefs'));
+  say('lens 层: ' + document.querySelectorAll('.glass__lens').length);
+  var el=document.getElementById('g');
+  var cs=getComputedStyle(el);
+  say('g offsetW=' + el.offsetWidth + ' vis=' + cs.visibility + ' disp=' + cs.display + ' op=' + cs.opacity);
+  LR.Glass.apply({quality:'high',glassLens:true,lensBevel:30,lensScale:56,lensDisp:0.55,lensBlur:9,lensTint:0.12});
+  say('apply 后 enabled=' + LR.Glass.P.enabled + ' scale=' + LR.Glass.P.scale + ' disp=' + LR.Glass.P.disp);
+  LR.Glass.refresh();
+  say('refresh 后 filters=' + LR.Glass.stats.filters + ' maps=' + LR.Glass.stats.maps);
+  say('lens filter 样式: ' + (document.querySelector('.glass__lens').style.filter || '(空)'));
+  say('glassDefs 里 filter 数: ' + document.querySelectorAll('#glassDefs filter').length);
+}catch(e){ say('EXCEPTION: ' + e.message + ' @ ' + (e.stack||'').split('\n')[1]); }
+</script></body></html>

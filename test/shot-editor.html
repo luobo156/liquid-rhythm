@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>Editor Shot</title>
+<link rel="stylesheet" href="../styles.css" />
+<style>html,body{height:100%;margin:0;background:#05070c}.app{height:100%;display:flex;flex-direction:column}</style>
+</head>
+<body>
+<div class="app">
+<main class="stage">
+<section class="screen screen--editor is-active" id="screen-editor">
+  <div class="edwrap">
+    <div class="edbar">
+      <div class="edbar__left">
+        <button class="iconbtn glass-hud" id="edBack">‹</button>
+        <div class="edtitle"><b id="edTitle">—</b><i id="edDirty"></i></div>
+      </div>
+      <div class="edbar__tools">
+        <button class="chip" id="edPlay">播放</button>
+        <div class="chips" id="edSnap">
+          <button class="chip" data-v="1">1/1</button>
+          <button class="chip" data-v="2">1/2</button>
+          <button class="chip" data-v="4">1/4</button>
+          <button class="chip" data-v="8">1/8</button>
+        </div>
+        <button class="chip" id="edZoomOut">−</button>
+        <button class="chip" id="edZoomIn">+</button>
+        <button class="chip" id="edUndo">撤销</button>
+        <button class="chip" id="edRedo">重做</button>
+        <button class="chip" id="edClear">清空</button>
+      </div>
+      <div class="edbar__right">
+        <span class="edstat" id="edCount">—</span>
+        <span class="edstat" id="edTime">0:00 / 0:00</span>
+        <button class="btn btn--sm" id="edImport">导入谱面</button>
+        <button class="btn btn--sm" id="edExport">导出谱面</button>
+        <button class="btn btn--sm btn--primary" id="edSave">保存并返回</button>
+      </div>
+      <input type="file" id="edFile" hidden />
+    </div>
+    <div class="edstage"><canvas id="edCanvas"></canvas></div>
+    <p class="edhint">
+      <b>左键空白</b> 加音符 · <b>拖动</b> 移动 · <b>右键 / Alt+左键</b> 删除 ·
+      <b>双击</b> 切换长按 · <b>拖长按右端</b> 改时长 · <b>标尺上拖动</b> 定位 ·
+      <b>空格</b> 播放 · <b>滚轮</b> 横向滚动 · <b>Ctrl+滚轮</b> 缩放 · <b>Ctrl+Z / Ctrl+Shift+Z</b> 撤销重做
+    </p>
+  </div>
+</section>
+</main>
+</div>
+<script src="../js/core.js"></script>
+<script src="../js/editor.js"></script>
+<script>
+/* 造一份「看起来像真谱面」的数据：强弱拍 + 人声长按 + 加花，方便看视觉 */
+(function () {
+  const beat = 60 / 128;
+  const bar = beat * 4;
+  const notes = [];
+  for (let b = 0; b < 14; b++) {
+    const t0 = 1.4 + b * bar;
+    const busy = b >= 4;
+    /* 底鼓踩外轨 */
+    for (let k = 0; k < 4; k++) {
+      const t = t0 + k * beat;
+      const lane = (k % 2 === 0) ? 0 : 3;
+      notes.push({ t: t, lane: lane, dur: 0, kind: 'tap' });
+      if (k === 0 && b % 4 === 3) notes[notes.length - 1].dur = beat * 2;
+    }
+    /* 军鼓踩内轨 */
+    notes.push({ t: t0 + beat, lane: 1, dur: 0, kind: 'tap' });
+    notes.push({ t: t0 + beat * 3, lane: 2, dur: 0, kind: 'tap' });
+    if (busy) {
+      /* 八分加花 + 人声楼梯 */
+      for (let k = 0; k < 4; k++) {
+        notes.push({ t: t0 + beat * 2 + k * beat / 2, lane: 1 + (k % 3), dur: 0, kind: 'tap' });
+      }
+      notes.push({ t: t0 + beat * 1.5, lane: 0, dur: beat * 1.5, kind: 'hold' });
+      notes.push({ t: t0 + beat * 2.5, lane: 3, dur: beat, kind: 'hold' });
+    }
+  }
+  const chart = {
+    mode: 'fall', diff: 'hard', lanes: 4, bpm: 128, beat: beat, offset: 0.15,
+    duration: 32, notes: notes, mix: {}, density: 0.5
+  };
+  const stub = { buffer: { duration: 32 }, playing: false, currentTime: function () { return 0; },
+    play: function () {}, pause: function () {}, stop: function () {} };
+  LR.Editor.open({ chart: chart, songName: 'One Last Kiss', analysis: null, audio: stub, onSave: function () {} });
+  LR.Editor.setSnap(4);
+  document.querySelectorAll('#edSnap .chip').forEach(function (c) {
+    c.classList.toggle('is-on', c.dataset.v === '4');
+  });
+  document.getElementById('edDirty').textContent = '';
+  /* 把播放头放到中段，并把视图滚到一个有内容的区间 */
+  setTimeout(function () {
+    LR.Editor.layout();
+    LR.Editor.setPlayhead(9.2);
+  }, 60);
+})();
+</script>
+</body>
+</html>

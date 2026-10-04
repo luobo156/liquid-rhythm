@@ -1,0 +1,20 @@
+PASS  识别到可拖元素   4 个
+PASS  拖动位移正确   Δ=(100,100)
+PASS  拖后变成 fixed 定位
+PASS  落点把 transform 归零（避免模糊）   "none"
+PASS  位置已写入 localStorage   {"g1":{"x":0.44932432432432434,"y":0.1702127659574468,"w":0.2702702702702703}}
+PASS  位移 < 5px 视为点击，不拖动
+PASS  抖动后没有标记为已摆放
+PASS  按在内部按钮上不会拖动父卡片
+PASS  按在滑杆上不会拖动父卡片
+PASS  button 卡片可以拖动   Δx=60
+PASS  顶栏按钮上不拖动
+PASS  顶栏空白处可拖动
+PASS  重置后全部回到文档流
+PASS  重置清空了存储
+PASS  重启后按存档恢复位置
+PASS  位置按视口比例还原   left=592px 期望≈592
+PASS  关闭后加上 no-drag
+PASS  关闭后无法拖动
+
+DRAG TEST: ALL PASSED

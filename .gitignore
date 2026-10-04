@@ -1,0 +1,21 @@
+# 开发过程中产生的对照截图（几十 MB，不入库）
+_shots/
+shots/
+
+# 测试跑出来的临时文件
+test/*.tmp
+test/out/
+
+# 系统垃圾
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 编辑器 / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 日志
+*.log

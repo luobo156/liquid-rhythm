@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<title>Liquid Rhythm · 液态玻璃音游原型</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body class="q-high">
+
+<!-- ===== 背景层（不吃性能：纯 transform 动画 + 静态噪点） ===== -->
+<div class="bg bg--space" aria-hidden="true">
+  <span class="bg__img"></span>
+  <span class="bg__blob bg__blob--a"></span>
+  <span class="bg__blob bg__blob--b"></span>
+  <span class="bg__blob bg__blob--c"></span>
+  <span class="bg__grid"></span>
+  <span class="bg__grain"></span>
+  <span class="bg__scrim"></span>
+  <span class="bg__vig"></span>
+</div>
+
+
+<div class="app">
+  <!-- ===== 顶栏 ===== -->
+  <header class="topbar" data-nodrag>
+    <div class="brand">
+      <div class="brand__mark"><span>LR</span><i class="brand__sheen"></i></div>
+      <div class="brand__text"><b>Liquid Rhythm</b><i>prototype v0.7</i></div>
+    </div>
+
+    <nav class="modes glass" data-nodrag id="modeNav" role="tablist" aria-label="玩法">
+      <span class="modes__glider" id="modeGlider" aria-hidden="true"></span>
+      <button class="chip" role="tab" data-mode="fall">下落式</button>
+      <button class="chip" role="tab" data-mode="rd">节奏医生式</button>
+      <button class="chip" role="tab" data-mode="side">横向</button>
+    </nav>
+
+    <div class="topbar__right">
+      <button class="iconbtn" id="btnKeys" title="键位设置" aria-label="键位设置">⌨</button>
+      <button class="iconbtn" id="btnSettings" title="设置" aria-label="设置">⚙</button>
+      <button class="iconbtn" id="btnHelp" title="帮助" aria-label="帮助">?</button>
+    </div>
+  </header>
+
+  <main class="stage">
+
+    <!-- ===== 主菜单 ===== -->
+    <section class="screen screen--menu is-active" id="screen-menu">
+      <div class="hero glass" id="hero">
+        <span class="glass__sheen" id="heroSheen" aria-hidden="true"></span>
+        <p class="eyebrow">WEB AUDIO · 实时起音检测 · 自动谱面</p>
+        <h1 class="hero__title">Liquid <em>Rhythm</em></h1>
+        <p class="hero__sub">导入任意音乐，自动生成可玩谱面。三种玩法、自由改键，UI 使用真·折射 / 色散液态玻璃；<b>谱面区域完全不用玻璃</b>，保证读谱清晰。</p>
+
+        <div class="drop" id="drop" tabindex="0" role="button" aria-label="导入音乐文件">
+          <div class="drop__ico">♪</div>
+          <div class="drop__txt"><b>把音乐拖到这里</b><span>或点击选择文件 · MP3 / WAV / OGG / M4A / FLAC</span></div>
+          <input type="file" id="fileInput" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac" hidden />
+        </div>
+
+        <div class="hero__row">
+          <button class="btn btn--primary" id="btnSample">用示例曲立即试玩</button>
+          <button class="btn" id="btnHelp2">它是怎么工作的</button>
+        </div>
+        <p class="hint">全部在本地解析与运算，文件不会上传。</p>
+      </div>
+
+      <div class="modecards">
+        <button class="mcard glass" data-mode="fall">
+          <span class="mcard__prev prev-fall"><i></i><i></i><i></i><i></i></span>
+          <span class="mcard__meta"><b>下落式</b><span>4 / 6 轨 · 音符向下落</span></span>
+        </button>
+        <button class="mcard glass" data-mode="rd">
+          <span class="mcard__prev prev-rd"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+          <span class="mcard__meta"><b>节奏医生式</b><span>单键 · 7 拍宫格</span></span>
+        </button>
+        <button class="mcard glass" data-mode="side">
+          <span class="mcard__prev prev-side"><i></i><i></i><i></i><i></i></span>
+          <span class="mcard__meta"><b>横向</b><span>4 / 6 行 · 由右向左</span></span>
+        </button>
+      </div>
+    </section>
+
+    <!-- ===== 谱面设置 ===== -->
+    <section class="screen screen--setup" id="screen-setup">
+      <div class="panel glass">
+        <div class="panel__head">
+          <div>
+            <h2>谱面预览</h2>
+            <p class="panel__sub" id="songMeta">—</p>
+          </div>
+          <div class="pills">
+            <span class="pill" id="pillBpm">BPM —</span>
+            <span class="pill" id="pillNotes">音符 —</span>
+            <span class="pill" id="pillMode">—</span>
+          </div>
+        </div>
+
+        <div class="wavewrap">
+          <canvas id="wave" aria-label="波形与谱面预览"></canvas>
+        </div>
+
+        <div class="opts">
+          <div class="opt">
+            <label>难度</label>
+            <div class="chips" id="optDiff">
+              <button class="chip" data-v="easy">简单</button>
+              <button class="chip" data-v="normal">普通</button>
+              <button class="chip" data-v="hard">困难</button>
+              <button class="chip" data-v="expert">专家</button>
+            </div>
+          </div>
+
+          <div class="opt">
+            <label>轨道数</label>
+            <div class="chips" id="optLanes">
+              <button class="chip" data-v="4">4 轨</button>
+              <button class="chip" data-v="6">6 轨</button>
+            </div>
+          </div>
+
+          <div class="opt opt--range">
+            <label>音符密度 <b id="lblDensity">50%</b></label>
+            <input type="range" id="optDensity" min="0" max="100" step="1" value="50" />
+          </div>
+
+          <div class="opt opt--range">
+            <label>下落速度 <b id="lblSpeed">1.00×</b></label>
+            <input type="range" id="optSpeed" min="60" max="200" step="5" value="100" />
+          </div>
+
+          <div class="opt opt--range">
+            <label>判定偏移 <b id="lblOffset">0 ms</b></label>
+            <input type="range" id="optOffset" min="-200" max="200" step="5" value="0" />
+          </div>
+
+          <div class="opt opt--switch">
+            <label>长按音符</label>
+            <button class="switch" id="optHolds" role="switch" aria-checked="true"><i></i></button>
+          </div>
+          <div class="opt opt--switch">
+            <label>对齐节拍网格</label>
+            <button class="switch" id="optSnap" role="switch" aria-checked="true"><i></i></button>
+          </div>
+        </div>
+
+        <div class="panel__foot">
+          <button class="btn" id="btnBackMenu">返回</button>
+          <button class="btn" id="btnPreview">试听 12 秒</button>
+          <button class="btn" id="btnEdit">编辑谱面</button>
+          <button class="btn" id="btnAuto">自动演示</button>
+          <button class="btn btn--primary btn--lg" id="btnStart">开始游戏</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 谱面编辑器 ===== -->
+    <section class="screen screen--editor" id="screen-editor">
+      <div class="edwrap">
+        <div class="edbar">
+          <div class="edbar__left">
+            <button class="iconbtn glass-hud" id="edBack" aria-label="返回">‹</button>
+            <div class="edtitle">
+              <b id="edTitle">—</b>
+              <i id="edDirty"></i>
+            </div>
+          </div>
+
+          <div class="edbar__tools">
+            <button class="chip" id="edPlay">播放</button>
+            <div class="chips" id="edSnap" aria-label="吸附精度">
+              <button class="chip" data-v="1">1/1</button>
+              <button class="chip" data-v="2">1/2</button>
+              <button class="chip" data-v="4">1/4</button>
+              <button class="chip" data-v="8">1/8</button>
+            </div>
+            <button class="chip" id="edZoomOut" aria-label="缩小">−</button>
+            <button class="chip" id="edZoomIn" aria-label="放大">+</button>
+            <button class="chip" id="edUndo">撤销</button>
+            <button class="chip" id="edRedo">重做</button>
+            <button class="chip" id="edClear">清空</button>
+          </div>
+
+          <div class="edbar__right">
+            <span class="edstat" id="edCount">—</span>
+            <span class="edstat" id="edTime">0:00 / 0:00</span>
+            <button class="btn btn--sm" id="edImport">导入谱面</button>
+            <button class="btn btn--sm" id="edExport">导出谱面</button>
+            <button class="btn btn--sm btn--primary" id="edSave">保存并返回</button>
+          </div>
+          <input type="file" id="edFile" accept=".json,application/json" hidden />
+        </div>
+
+        <div class="edstage"><canvas id="edCanvas" aria-label="谱面时间轴"></canvas></div>
+
+        <p class="edhint">
+          <b>左键空白</b> 加音符 · <b>拖动</b> 移动 · <b>右键 / Alt+左键</b> 删除 ·
+          <b>双击</b> 切换长按 · <b>拖长按右端</b> 改时长 · <b>标尺上拖动</b> 定位 ·
+          <b>空格</b> 播放 · <b>滚轮</b> 横向滚动 · <b>Ctrl+滚轮</b> 缩放 · <b>Ctrl+Z / Ctrl+Shift+Z</b> 撤销重做
+        </p>
+      </div>
+    </section>
+
+    <!-- ===== 游戏 ===== -->
+    <section class="screen screen--game" id="screen-game">
+      <canvas id="field" aria-label="游戏区域"></canvas>
+
+      <div class="gamehud">
+        <button class="iconbtn glass-hud" id="btnPause" aria-label="暂停">❚❚</button>
+        <div class="gamehud__title glass-hud" id="gameTitle">—</div>
+        <div class="gamehud__keys glass-hud" id="gameKeys">—</div>
+      </div>
+
+      <div class="pauseov is-hidden" id="pauseOv">
+        <div class="pausecard glass-lite">
+          <h3>已暂停</h3>
+          <p id="pauseHint">Esc 继续 · 判定偏移可在设置里微调</p>
+          <div class="pausecard__row">
+            <button class="btn btn--primary" id="btnResume">继续</button>
+            <button class="btn" id="btnRestart">重开</button>
+            <button class="btn btn--danger" id="btnQuit">退出</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 结算 ===== -->
+    <section class="screen screen--result" id="screen-result">
+      <div class="panel panel--result glass">
+        <div class="res__top">
+          <div class="res__grade" id="resGrade">S</div>
+          <div class="res__sum">
+            <h2 id="resTitle">演奏结束</h2>
+            <p id="resSub">—</p>
+          </div>
+        </div>
+
+        <div class="res__stats">
+          <div class="stat"><span>得分</span><b id="resScore">0</b></div>
+          <div class="stat"><span>准确率</span><b id="resAcc">0%</b></div>
+          <div class="stat"><span>最大连击</span><b id="resCombo">0</b></div>
+          <div class="stat"><span>音符数</span><b id="resTotal">0</b></div>
+        </div>
+
+        <div class="res__bars" id="resBars"></div>
+
+        <div class="panel__foot">
+          <button class="btn" id="btnResBack">返回菜单</button>
+          <button class="btn" id="btnExport">导出谱面 JSON</button>
+          <button class="btn" id="btnRetry" >再来一次</button>
+          <button class="btn btn--primary" id="btnResSetup">调整谱面</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ===== 键位面板 ===== -->
+<div class="sheetwrap is-hidden" id="sheetKeys" role="dialog" aria-modal="true" aria-label="键位设置">
+  <div class="sheetback"></div>
+  <div class="sheet glass">
+    <div class="sheet__head">
+      <h3>键位设置</h3>
+      <button class="iconbtn" data-close="sheetKeys" aria-label="关闭">✕</button>
+    </div>
+    <p class="sheet__tip">点击任意按键格，然后按下你想绑定的键。支持识别所有物理键位。</p>
+    <div class="sheet__body" id="keybindBody"></div>
+    <div class="sheet__foot">
+      <button class="btn" id="btnKeyReset">恢复默认</button>
+      <button class="btn btn--primary" data-close="sheetKeys">完成</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 设置面板 ===== -->
+<div class="sheetwrap is-hidden" id="sheetSettings" role="dialog" aria-modal="true" aria-label="设置">
+  <div class="sheetback"></div>
+  <div class="sheet glass">
+    <div class="sheet__head">
+      <h3>设置</h3>
+      <button class="iconbtn" data-close="sheetSettings" aria-label="关闭">✕</button>
+    </div>
+    <div class="sheet__body">
+      <div class="group">
+        <h4>背景</h4>
+        <div class="opt opt--stack">
+          <label>预设<small>背景细节越多，玻璃边缘的折射越明显</small></label>
+          <div class="chips" id="setBgPreset"></div>
+        </div>
+        <div class="opt opt--stack">
+          <label>导入自己的图片<small>压到 1600px 后存在本地，不会上传</small></label>
+          <div class="chips">
+            <button class="chip" id="btnBgImport">选择图片…</button>
+            <button class="chip" id="btnBgClear">清除图片</button>
+          </div>
+          <input type="file" id="bgFile" accept="image/*" hidden />
+        </div>
+        <div class="opt opt--stack">
+          <label>图片地址 / 壁纸 API<small>支持 {w} {h} {r} 占位符，例如 https://picsum.photos/{w}/{h}?r={r}</small></label>
+          <div class="chips">
+            <input type="text" id="bgUrlInput" class="textin" placeholder="https://..." />
+            <button class="chip" id="btnBgUrl">应用</button>
+            <button class="chip" id="btnBgShuffle">换一张</button>
+          </div>
+        </div>
+        <div class="opt opt--range">
+          <label>背景暗度 <b id="lblBgDim">20%</b><small>背景太亮时调高，保证文字可读</small></label>
+          <input type="range" id="setBgDim" min="0" max="85" step="1" value="20" />
+        </div>
+        <div class="opt opt--range">
+          <label>背景模糊 <b id="lblBgBlur">0 px</b></label>
+          <input type="range" id="setBgBlur" min="0" max="30" step="1" value="0" />
+        </div>
+      </div>
+
+      <div class="group">
+        <h4>画面与性能</h4>
+        <div class="opt opt--stack">
+          <label>玻璃质量<small>低档关闭全部模糊与折射（最省电），中档保留透镜但去掉色散</small></label>
+          <div class="chips" id="setQuality">
+            <button class="chip" data-v="high">高</button>
+            <button class="chip" data-v="mid">中</button>
+            <button class="chip" data-v="low">低</button>
+          </div>
+        </div>
+        <div class="opt opt--stack">
+          <label>折射 / 色散<small>关闭后玻璃只剩高斯模糊</small></label>
+          <button class="switch" id="setRefract" role="switch" aria-checked="true"><i></i></button>
+        </div>
+        <div class="opt opt--range">
+          <label>透镜斜面宽度 <b id="lblBevel">30 px</b><small>厚玻璃的边缘折射带有宽</small></label>
+          <input type="range" id="setBevel" min="8" max="70" step="1" value="30" />
+        </div>
+        <div class="opt opt--range">
+          <label>折射位移强度 <b id="lblScale2">56 px</b><small>边缘把背景「吸进来」的幅度</small></label>
+          <input type="range" id="setScale2" min="8" max="130" step="1" value="56" />
+        </div>
+        <div class="opt opt--range">
+          <label>色散强度 <b id="lblDisp">55%</b><small>边缘的彩色分光</small></label>
+          <input type="range" id="setDisp" min="0" max="100" step="1" value="55" />
+        </div>
+        <div class="opt opt--range">
+          <label>玻璃模糊 <b id="lblLensBlur">3 px</b></label>
+          <input type="range" id="setLensBlur" min="0" max="18" step="0.5" value="2" />
+        </div>
+        <div class="opt opt--range">
+          <label>玻璃染色 <b id="lblTint">5%</b><small>白色蒙版强度</small></label>
+          <input type="range" id="setTint" min="0" max="25" step="1" value="5" />
+        </div>
+        <div class="opt opt--stack">
+          <label>背景动态<small>缓慢漂浮的色彩团</small></label>
+          <button class="switch" id="setBgAnim" role="switch" aria-checked="true"><i></i></button>
+        </div>
+        <div class="opt opt--stack">
+          <label>显示帧率</label>
+          <button class="switch" id="setFps" role="switch" aria-checked="false"><i></i></button>
+        </div>
+      </div>
+
+      <div class="group">
+        <h4>游戏内表现</h4>
+        <div class="opt opt--stack">
+          <label>游戏里显示壁纸<small>关掉就是原来的近纯色背景</small></label>
+          <button class="switch" id="setPlayBg" role="switch" aria-checked="true"><i></i></button>
+        </div>
+        <div class="opt opt--range">
+          <label>谱面区压暗 <b id="lblPlayDim">52%</b><small>壁纸太花就调高，保证读谱</small></label>
+          <input type="range" id="setPlayDim" min="0" max="92" step="2" value="52" />
+        </div>
+        <div class="opt opt--stack">
+          <label>默认自动演奏<small>开着的话点「开始游戏」也是自动演示</small></label>
+          <button class="switch" id="setAuto" role="switch" aria-checked="false"><i></i></button>
+        </div>
+        <div class="opt opt--stack">
+          <label>判定线特效<small>判定线会随小节倾斜、移动（Phigros 的谱面特效）</small></label>
+          <button class="switch" id="setFxLine" role="switch" aria-checked="true"><i></i></button>
+        </div>
+        <div class="opt opt--range">
+          <label>特效幅度 <b id="lblFxPower">100%</b></label>
+          <input type="range" id="setFxPower" min="0" max="200" step="10" value="100" />
+        </div>
+      </div>
+
+      <div class="group">
+        <h4>打击音效</h4>
+        <div class="opt opt--stack">
+          <label>开启打击音<small>每次命中播放一声音游 click，音量独立于音乐</small></label>
+          <button class="switch" id="setSfx" role="switch" aria-checked="true"><i></i></button>
+        </div>
+        <div class="opt opt--range">
+          <label>音效音量 <b id="lblSfxVol">60%</b></label>
+          <input type="range" id="setSfxVol" min="0" max="100" step="1" value="60" />
+        </div>
+        <div class="opt opt--stack">
+          <label>音色</label>
+          <div class="chips" id="setSfxTone">
+            <button class="chip" data-v="crisp">干脆</button>
+            <button class="chip" data-v="bright">明亮</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <h4>音频与判定</h4>
+        <div class="opt opt--range">
+          <label>音量 <b id="lblVol">85%</b></label>
+          <input type="range" id="setVol" min="0" max="100" step="1" value="85" />
+        </div>
+        <div class="opt opt--range">
+          <label>判定偏移 <b id="lblOffset2">0 ms</b><small>感觉音乐比音符早 → 往正数调</small></label>
+          <input type="range" id="setOffset" min="-200" max="200" step="5" value="0" />
+        </div>
+      </div>
+
+      <div class="group">
+        <h4>数据与布局</h4>
+        <div class="opt opt--stack">
+          <label>允许拖动 UI<small>抓着卡片的空白处就能拖走，位置会记住</small></label>
+          <button class="switch" id="setDrag" role="switch" aria-checked="true"><i></i></button>
+        </div>
+        <div class="opt">
+          <label>把所有卡片放回原位</label>
+          <button class="btn btn--sm" id="btnResetLayout">重置布局</button>
+        </div>
+        <div class="opt">
+          <label>配置备份<small>导出 / 导入你的全部设置与键位</small></label>
+          <div class="chips">
+            <button class="chip" id="btnExportCfg">导出配置</button>
+            <button class="chip" id="btnImportCfg">导入配置</button>
+          </div>
+          <input type="file" id="cfgFile" accept=".json,application/json" hidden />
+        </div>
+        <div class="opt">
+          <label>恢复全部默认设置</label>
+          <button class="btn btn--danger btn--sm" id="btnFactory">重置</button>
+        </div>
+      </div>
+    </div>
+    <div class="sheet__foot">
+      <button class="btn btn--primary" data-close="sheetSettings">完成</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 帮助 ===== -->
+<div class="sheetwrap is-hidden" id="sheetHelp" role="dialog" aria-modal="true" aria-label="帮助">
+  <div class="sheetback"></div>
+  <div class="sheet glass">
+    <div class="sheet__head">
+      <h3>玩法与实现</h3>
+      <button class="iconbtn" data-close="sheetHelp" aria-label="关闭">✕</button>
+    </div>
+    <div class="sheet__body">
+      <div class="group">
+        <h4>自动谱面是怎么来的</h4>
+        <ol class="steps">
+          <li><b>解码</b>：Web Audio 解码音频到 PCM。</li>
+          <li><b>频谱通量</b>：1024 点 FFT × 512 跳距，对每个频点做对数压缩后取正向差分，得到起音强度包络。</li>
+          <li><b>自适应阈值</b>：滑动窗口均值 + 1.6σ，峰值拾取 + 85ms 非极大值抑制。</li>
+          <li><b>BPM / 相位</b>：包络自相关估计周期，再扫描相位让脉冲梳对齐起音。</li>
+          <li><b>分轨</b>：六频段能量重心映射到轨道，密集段落自动生成楼梯式走向。</li>
+          <li><b>长按</b>：若起音后持续能量仍高于阈值，生成长按音符。</li>
+        </ol>
+      </div>
+      <div class="group">
+        <h4>三种玩法</h4>
+        <ul class="steps">
+          <li><b>下落式</b>：音符自上而下，判定线在下方。</li>
+          <li><b>节奏医生式</b>：单键，按 7 拍宫格由右向左推进，第 7 拍格会高亮。</li>
+          <li><b>横向</b>：音符由右向左，判定线在左侧。</li>
+        </ul>
+      </div>
+      <div class="group">
+        <h4>判定</h4>
+        <p class="sheet__p">Perfect ±42ms · Great ±85ms · Good ±125ms · Miss 超过 ±190ms。判定线位置以听感为准（已补偿音频输出延迟）。</p>
+      </div>
+      <div class="group">
+        <h4>快捷键</h4>
+        <p class="sheet__p">Esc 暂停/继续 · 空格在「节奏医生式」下为主键 · 键位可自行修改。</p>
+      </div>
+    </div>
+    <div class="sheet__foot">
+      <button class="btn btn--primary" data-close="sheetHelp">知道了</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 忙碌 / 提示 ===== -->
+<!-- ===== 谱面来源选择（每次导入音频后问一次）===== -->
+<div class="sheetwrap is-hidden" id="sheetChart" role="dialog" aria-modal="true" aria-label="选择谱面来源">
+  <div class="sheetback" id="chartBack"></div>
+  <div class="sheet glass">
+    <div class="sheet__head">
+      <h3>这份谱面怎么来？</h3>
+    </div>
+    <p class="sheet__tip" id="chartTip">音频分析完成。</p>
+    <div class="sheet__body">
+      <div class="pickrow">
+        <button class="pick" id="pickAuto">
+          <b>自动生成谱面</b>
+          <small>按鼓点与人声铺音符，生成后仍可进编辑器修改</small>
+        </button>
+        <button class="pick" id="pickBlank">
+          <b>从空白谱面开始</b>
+          <small>只给节拍网格，音符全部自己放 · 选它直接进编辑器</small>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="busy is-hidden" id="busy">
+  <div class="busy__card glass-lite">
+    <div class="spin"></div>
+    <b id="busyText">正在分析音频…</b>
+    <div class="bar"><i id="busyBar"></i></div>
+    <small id="busySub">FFT 频谱通量分析</small>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="fps" id="fps" hidden>-- FPS</div>
+
+<script src="js/core.js"></script>
+<script src="js/sfx.js"></script>
+<script src="js/glass.js"></script>
+<script src="js/backdrop.js"></script>
+<script src="js/drag.js"></script>
+<script src="js/game.js"></script>
+<script src="js/editor.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>

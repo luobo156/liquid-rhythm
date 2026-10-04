@@ -1,0 +1,62 @@
+=== 1. 判定：全部精准命中 ===
+  notes=88 perfect=88 great=0 good=0 miss=0 combo=88 acc=100.0% grade=S+ score=35175
+PASS  全部判为 PERFECT   88/88
+PASS  没有 MISS
+PASS  连击数等于音符总数   88/88
+PASS  准确率 100%   1.0000
+PASS  评级 S+   S+
+PASS  得分大于 0   35175
+PASS  渲染全程无异常
+
+=== 2. 判定窗口分层（±42 完美 / ±85 优秀 / ±125 良好 / >190 漏掉）===
+  +30ms → perfect=88 其它=0
+PASS  +30ms 全部判为 perfect   88/88
+  +65ms → great=88 其它=0
+PASS  +65ms 全部判为 great   88/88
+  +105ms → good=88 其它=0
+PASS  +105ms 全部判为 good   88/88
+
+=== 3. 完全不按 ===
+  miss=88/88 combo=0 score=0 grade=D
+PASS  全部自动判 MISS   88/88
+PASS  连击为 0
+PASS  得分为 0   0
+PASS  评级 D   D
+
+=== 4. 提前 0.4s 敲击 ===
+PASS  过早敲击不会消耗音符   state=0
+PASS  过早敲击不计入任何判定
+PASS  随后正常敲击依然判定成功
+
+=== 5. 长按音符 ===
+  长按数=6/21 平均时长=0.46s | 按满: score=7238 perfectly=21/21 | 提前松手: score=6878 perfectly=21/21
+PASS  稀疏谱面里生成了长按   6/21
+PASS  长按时长在合理区间   0.46s
+PASS  按满长按时连击不断   21/21
+PASS  按满长按得分高于提前松手   7238 > 6878
+PASS  提前松手不会判 MISS（设计上宽容）   0
+
+=== 6. 三种玩法 ===
+  下落式: notes=88 perfect=88 miss=0 combo=88 粒子=69 drawErr=0
+PASS  下落式 有音符
+PASS  下落式 全部完美   88/88
+PASS  下落式 渲染无异常
+  横向: notes=88 perfect=88 miss=0 combo=88 粒子=66 drawErr=0
+PASS  横向 有音符
+PASS  横向 全部完美   88/88
+PASS  横向 渲染无异常
+  节奏医生式: notes=40 perfect=40 miss=0 combo=40 粒子=32 drawErr=0
+PASS  节奏医生式 有音符
+PASS  节奏医生式 全部完美   40/40
+PASS  节奏医生式 渲染无异常
+
+=== 7. 暂停与恢复 ===
+PASS  pause() 生效
+PASS  暂停时敲击不生效
+PASS  resume() 生效
+PASS  恢复后敲击生效
+
+=== 8. 改变画布尺寸 ===
+PASS  三种玩法在 900x600 / 1600x1000 / 420x780 下渲染都不报错
+
+E2E: ALL PASSED
