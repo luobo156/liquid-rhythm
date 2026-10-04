@@ -8,6 +8,7 @@
 （本网页游戏几乎全部都由deepseek v4.1 flash模型生成，本人仅作建议以及测试）
 
 ![主界面](docs/images/menu.jpg)
+![液态玻璃演示](docs/images/demo-liquid-glass.gif)
 
 </div>
 
