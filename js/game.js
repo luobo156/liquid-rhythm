@@ -947,6 +947,35 @@ const Game = {
       const n = arr[i];
       const x = g.judgeX + (n.t - t) * this.pxs;
       if (x > W + 200) break;
+            /* ---------- 长按条渲染 ---------- */
+      if (n.dur > 0.05 && n.state !== 2) {
+        const xTail = g.judgeX + (n.t + n.dur - t) * this.pxs;
+        const a = Math.max(x, g.judgeX);          // 头部过线后从判定线起画
+        const b = Math.min(xTail, W + 240);       // 尾判位置
+        if (b - a > 2) {
+          const li = (((n.lane | 0) % LANE_COLORS.length) + LANE_COLORS.length) % LANE_COLORS.length;
+          const col = LANE_COLORS[li];
+          const barH = Math.max(10, g.stripH * 0.25);
+          const top = cy - barH / 2;
+
+          const cg = c.createLinearGradient(0, top, 0, top + barH);
+          cg.addColorStop(0, hexA(col.b, 0.32));
+          cg.addColorStop(0.5, hexA(col.b, 0.88));
+          cg.addColorStop(1, hexA(col.b, 0.32));
+          c.fillStyle = cg;
+          rr(c, a, top, b - a, barH, Math.min(14, barH / 2));
+          c.fill();
+
+          c.fillStyle = 'rgba(255,255,255,.42)';
+          rr(c, a + 4, cy - barH * 0.22, Math.max(2, b - a - 8), Math.max(2, barH * 0.16), 2);
+          c.fill();
+
+          c.fillStyle = 'rgba(255,255,255,.55)';
+          rr(c, b - 4, top + 2, 4, barH - 4, 2);
+          c.fill();
+        }
+      }
+      /* ---------- 长按条渲染结束 ---------- */
       if (n.state === 1) { if (t - n.ht < 0.2) c.globalAlpha = 1 - (t - n.ht) / 0.2; else continue; }
       else if (n.state === 2) { if (t - n.mt > 0.5) continue; c.globalAlpha = 0.28; }
       /* 按到下一颗音符的间距缩放，密集段落也不会糊成一条 */

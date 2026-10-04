@@ -1,13 +1,18 @@
 /* ============================================================
    Liquid Rhythm · backdrop.js
-   可更换背景：内置预设 + 导入本地图片 + 暗度/模糊调节。
-   背景的「结构感」直接决定液态玻璃好不好看 —— 平滑渐变后面没有东西可折射。
+   可更换背景：内置预设 + 导入本地图片 + API 模板 + 暗度/模糊调节。
+   支持在「预设 / 本地图片 / API 图片」三种来源间随时切换。
+   API 图片拉下来后缓存为 base64，刷新页面不再发网络请求。
    ============================================================ */
 window.LR = window.LR || {};
 (function (LR) {
 'use strict';
 
-const IMG_KEY = 'lr.bgimg.v1';
+const IMG_KEY     = 'lr.bgimg.v1';     // 本地图片（base64）
+const URL_KEY     = 'lr.bgurl.v1';     // API 模板
+const MODE_KEY    = 'lr.bgmode.v1';    // 当前来源：'preset' | 'local' | 'api'
+const CUR_KEY     = 'lr.bgcururl.v1';  // 上次解析后的 API URL
+const API_IMG_KEY = 'lr.bgapiimg.v1';  // 上次拉到的 API 图片数据（base64）
 const MAXW = 1600, MAXH = 1200;
 
 const PRESETS = [
@@ -30,15 +35,15 @@ function bgs() {
   return el;
 }
 
-function loadStoredImage() {
-  try { return localStorage.getItem(IMG_KEY) || null; } catch (e) { return null; }
+function lsGet(k) {
+  try { return localStorage.getItem(k) || null; } catch (e) { return null; }
 }
-function storeImage(data) {
+function lsSet(k, v) {
   try {
-    if (data) localStorage.setItem(IMG_KEY, data);
-    else localStorage.removeItem(IMG_KEY);
+    if (v) localStorage.setItem(k, v);
+    else localStorage.removeItem(k);
     return true;
-  } catch (e) { return false; }   // 配额不够就只在本次会话里生效
+  } catch (e) { return false; }
 }
 
 /* 把用户图片压到合理尺寸再存，顺便算出平均亮度用于自动压暗 */
@@ -53,7 +58,6 @@ function processImage(file, cb) {
     cv.width = w; cv.height = h;
     const c = cv.getContext('2d');
     c.drawImage(im, 0, 0, w, h);
-    /* 平均亮度 */
     let lum = 0;
     try {
       const sm = document.createElement('canvas');
@@ -73,24 +77,79 @@ function processImage(file, cb) {
   im.src = url;
 }
 
+/* 从 URL 拉图片并转成 data URL，用来持久化 API 图片 */
+function fetchImageAsDataUrl(url, cb) {
+  if (!url) { cb(null); return; }
+  const im = new Image();
+  im.crossOrigin = 'anonymous';
+  let done = false;
+  const finish = function (d) { if (done) return; done = true; cb(d); };
+  const t = setTimeout(function () { finish(null); }, 12000);
+  im.onload = function () {
+    clearTimeout(t);
+    try {
+      const w = im.naturalWidth || im.width || 800;
+      const h = im.naturalHeight || im.height || 600;
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      cv.getContext('2d').drawImage(im, 0, 0, w, h);
+      finish(cv.toDataURL('image/jpeg', 0.85));
+    } catch (e) { finish(null); }   // CORS 污染画布 → 放弃缓存
+  };
+  im.onerror = function () { clearTimeout(t); finish(null); };
+  im.src = url;
+}
+
 const Backdrop = {
   PRESETS: PRESETS,
-  image: null,          // 只存在这里，不进设置对象（否则会被塞进 localStorage 的设置项里爆配额）
+  image: null,
+  mode: 'preset',
+
+  _localImage: null,
+  _apiTpl: null,
+  _apiUrl: null,
+  _apiImgData: null,
 
   init: function (S) {
     bgs();
-    this.image = loadStoredImage();
-    /* 方便分享/调试：?bg=studio&dim=0.4&blur=8 直接指定背景，不写入存储 */
+    this._localImage = lsGet(IMG_KEY);
+    this._apiTpl     = lsGet(URL_KEY);
+    this._apiUrl     = lsGet(CUR_KEY);
+    this._apiImgData = lsGet(API_IMG_KEY);
+
+    /* 兼容旧数据：没有 mode 记录时，按「本地优先」推断 */
+    const saved = lsGet(MODE_KEY);
+    if (saved === 'preset' || saved === 'local' || saved === 'api') {
+      this.mode = saved;
+    } else {
+      this.mode = this._localImage ? 'local' : (this._apiTpl ? 'api' : 'preset');
+    }
+    if (this.mode === 'local' && !this._localImage) this.mode = this._apiTpl ? 'api' : 'preset';
+    if (this.mode === 'api'   && !this._apiTpl)     this.mode = this._localImage ? 'local' : 'preset';
+
+    /* 从缓存同步 image（不涉及网络） */
+    if (this.mode === 'local')      this.image = this._localImage;
+    else if (this.mode === 'api')   this.image = this._apiImgData || null;  // 没数据就留空，稍后异步拉
+    else                            this.image = null;
+
+    /* URL 参数覆盖（调试/分享用，不写存储） */
+    let hasBgImgOverride = false;
     try {
       const q = new URLSearchParams(location.search);
       const p = q.get('bg');
       if (p === 'test' || PRESETS.some(function (x) { return x.id === p; })) S.bgPreset = p;
-      if (q.get('dim') != null) S.bgDim = Math.max(0, Math.min(0.85, parseFloat(q.get('dim'))));
+      if (q.get('dim')  != null) S.bgDim  = Math.max(0, Math.min(0.85, parseFloat(q.get('dim'))));
       if (q.get('blur') != null) S.bgBlur = Math.max(0, Math.min(30, parseFloat(q.get('blur'))));
       const bi = q.get('bgimg');
-      if (bi) this.image = bi;      // 直接指定图片背景，不写存储
+      if (bi) { this.image = bi; hasBgImgOverride = true; }
     } catch (e) { /* ignore */ }
+
     this.apply(S);
+
+    /* 有 API 模式但没缓存数据 → 只 fetch 一次 */
+    if (!hasBgImgOverride && this.mode === 'api' && !this._apiImgData) {
+      this._loadApiImage(S);
+    }
   },
 
   apply: function (S) {
@@ -114,32 +173,167 @@ const Backdrop = {
     if (scrimEl) scrimEl.style.background = 'rgba(0,0,0,' + (S.bgDim == null ? 0.2 : S.bgDim) + ')';
   },
 
-  /* 导入图片；回调里给出是否成功持久化 */
+  /* 把模板解析成真实 URL；没有 {r} 占位符时自动补时间戳破缓存 */
+  _resolveUrl: function (tpl) {
+    const u = String(tpl || '').trim();
+    if (!u) return '';
+    const w = Math.max(1280, screen.width || 1280);
+    const h = Math.max(800, screen.height || 800);
+    let url = u
+      .replace(/\{w\}/g, w).replace(/\{h\}/g, h)
+      .replace(/\{r\}/g, String(Math.floor(Math.random() * 1e6)));
+    if (u.indexOf('{r}') < 0) {
+      url += (url.indexOf('?') >= 0 ? '&' : '?') + '_t=' + Date.now();
+    }
+    return url;
+  },
+
+  /* ★ 唯一的 API 图片加载入口：有缓存直接用，没缓存只 fetch 一次 */
+  _loadApiImage: function (S) {
+    const self = this;
+
+    /* 1. 有图片数据 → 零请求 */
+    if (this._apiImgData) {
+      this.image = this._apiImgData;
+      if (S) this.apply(S);
+      return;
+    }
+    /* 2. 确定 URL */
+    if (!this._apiUrl && this._apiTpl) {
+      this._apiUrl = this._resolveUrl(this._apiTpl);
+      lsSet(CUR_KEY, this._apiUrl);
+    }
+    if (!this._apiUrl) {
+      this.image = null;
+      if (S) this.apply(S);
+      return;
+    }
+    /* 3. 只 fetch 一次；成功后写缓存 */
+    const url = this._apiUrl;
+    fetchImageAsDataUrl(url, function (data) {
+      if (self.mode !== 'api') return;
+      if (data) {
+        self._apiImgData = data;
+        lsSet(API_IMG_KEY, data);
+        self.image = data;
+      } else {
+        /* CORS 被拒 / 拉取失败 → 退回 URL（浏览器会自己发一次请求） */
+        self.image = url;
+      }
+      if (S) self.apply(S);
+    });
+  },
+
+  /* ---------- 查询 ---------- */
+  hasLocal: function () { return !!this._localImage; },
+  hasApi:   function () { return !!this._apiTpl; },
+  getMode:  function () { return this.mode; },
+
+  /* ---------- 模式切换 ---------- */
+  setMode: function (mode, S) {
+    if (mode !== 'preset' && mode !== 'local' && mode !== 'api') return false;
+    if (mode === 'local' && !this._localImage) return false;
+    if (mode === 'api'   && !this._apiTpl)     return false;
+    this.mode = mode;
+    lsSet(MODE_KEY, mode);
+
+    if (mode === 'local') {
+      this.image = this._localImage;
+      if (S) this.apply(S);
+    } else if (mode === 'api') {
+      this._loadApiImage(S);          // 有缓存零请求，无缓存只 fetch 一次
+    } else {
+      this.image = null;
+      if (S) this.apply(S);
+    }
+    return true;
+  },
+
+  /* ---------- 导入本地图片 ---------- */
   importFile: function (file, cb) {
     if (!file || !/^image\//i.test(file.type)) { cb({ ok: false, reason: 'notimage' }); return; }
     const self = this;
     processImage(file, function (data, lum, w, h) {
       if (!data) { cb({ ok: false, reason: 'decode' }); return; }
+      self._localImage = data;
+      const saved = lsSet(IMG_KEY, data);
+      self.mode = 'local';
+      lsSet(MODE_KEY, 'local');
       self.image = data;
-      const saved = storeImage(data);
       cb({ ok: true, lum: lum, w: w, h: h, saved: saved });
     });
   },
 
-  /* 直接用图片地址 / API 模板（支持 {w} {h} {r} 占位符，{r} 是随机数，用来「换一张」） */
+  /* ---------- 设置 API 模板（清缓存 → 只 fetch 一次 → 显示） ---------- */
   setUrl: function (tpl, S) {
     const u = String(tpl || '').trim();
     if (!u) return false;
-    const w = Math.max(1280, screen.width || 1280);
-    const h = Math.max(800, screen.height || 800);
-    this.image = u
-      .replace(/\{w\}/g, w).replace(/\{h\}/g, h)
-      .replace(/\{r\}/g, String(Math.floor(Math.random() * 1e6)));
-    this.apply(S);
+    this._apiTpl = u;
+    lsSet(URL_KEY, u);
+    this.mode = 'api';
+    lsSet(MODE_KEY, 'api');
+
+    /* 生成新 URL，清掉旧缓存（关键：换一张就清一次） */
+    this._apiUrl = this._resolveUrl(u);
+    lsSet(CUR_KEY, this._apiUrl);
+    this._apiImgData = null;
+    lsSet(API_IMG_KEY, null);
+
+    /* 只调用一次 _loadApiImage，内部只 fetch 一次 */
+    this._loadApiImage(S);
     return true;
   },
 
-  clearImage: function () { this.image = null; storeImage(null); }
+  refreshApi: function (S) {
+    if (!this._apiTpl) return false;
+    return this.setUrl(this._apiTpl, S);
+  },
+
+  /* ---------- 清除 ---------- */
+  clearLocal: function (S) {
+    this._localImage = null;
+    lsSet(IMG_KEY, null);
+    if (this.mode === 'local') {
+      this.mode = this._apiTpl ? 'api' : 'preset';
+      lsSet(MODE_KEY, this.mode);
+    }
+    if (this.mode === 'api')       this._loadApiImage(S);
+    else if (this.mode === 'local') this.image = this._localImage;
+    else { this.image = null; if (S) this.apply(S); }
+  },
+
+  clearApi: function (S) {
+    this._apiTpl = null;
+    this._apiUrl = null;
+    this._apiImgData = null;
+    lsSet(URL_KEY, null);
+    lsSet(CUR_KEY, null);
+    lsSet(API_IMG_KEY, null);
+    if (this.mode === 'api') {
+      this.mode = this._localImage ? 'local' : 'preset';
+      lsSet(MODE_KEY, this.mode);
+    }
+    if (this.mode === 'local') { this.image = this._localImage; if (S) this.apply(S); }
+    else                       { this.image = null;           if (S) this.apply(S); }
+  },
+
+  clearAll: function (S) {
+    this._localImage = null;
+    this._apiTpl = null;
+    this._apiUrl = null;
+    this._apiImgData = null;
+    lsSet(IMG_KEY, null);
+    lsSet(URL_KEY, null);
+    lsSet(CUR_KEY, null);
+    lsSet(API_IMG_KEY, null);
+    this.mode = 'preset';
+    lsSet(MODE_KEY, null);
+    this.image = null;
+    if (S) this.apply(S);
+  },
+
+  /* 兼容旧接口 */
+  clearImage: function (S) { this.clearAll(S); }
 };
 
 LR.Backdrop = Backdrop;
