@@ -1111,6 +1111,15 @@ function boot() {
         });
         /* 手机端诊断：是否判定为手机、拖拽是否已禁用、当前屏能不能滚 */
         out.push('mobile=' + LR.isMobile() + ' dragEnabled=' + (LR.Drag ? LR.Drag.enabled : 'n/a'));
+        var mc = document.querySelector('.mcard');
+        out.push('iw=' + window.innerWidth + ' ih=' + window.innerHeight +
+          ' dpr=' + (window.devicePixelRatio || 1));
+        if (mc) {
+          var mcr = mc.getBoundingClientRect();
+          out.push('mcard0=' + Math.round(mcr.width) + 'x' + Math.round(mcr.height) +
+            '@' + Math.round(mcr.left) + ',' + Math.round(mcr.top) +
+            (mc.classList.contains('is-placed') ? ' 已摆放' : ' 文档流'));
+        }
         var sc = document.querySelector('.screen.is-active');
         if (sc) {
           out.push('screen=' + (sc.id || '?') + ' scrollH=' + sc.scrollHeight +

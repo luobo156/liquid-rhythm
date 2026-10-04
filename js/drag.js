@@ -44,7 +44,13 @@ function clampPos(left, top, w, h) {
   };
 }
 
-function place(el, left, top) {
+function place(el, left, top, w) {
+  /* 必须先把宽度定下来再定位：
+     position:fixed 的元素宽度会变成 shrink-to-fit（贴合内容），
+     flex 布局里那种「宽度由布局决定」的卡片（模式卡就是）会一下塌成内容宽度。
+     以前这里只设 position/left/top，宽度只在 resize 时才写回 ——
+     所以「拖一次 → 刷新 → 卡片变窄且位置偏移」，缩放一下窗口才恢复正常。 */
+  if (w > 0) el.style.width = w + 'px';
   const p = clampPos(left, top, el.offsetWidth, el.offsetHeight);
   el.style.position = 'fixed';
   el.style.margin = '0';
@@ -91,8 +97,13 @@ const Drag = {
       }
       this.els.push(el);
       if (this.enabled && store[key]) {
-        place(el, store[key].x * window.innerWidth, store[key].y * window.innerHeight);
-        el.dataset.wr = String(store[key].w || (el.offsetWidth / window.innerWidth));
+        const st = store[key];
+        /* 存档里有宽度就用存档的；老存档没有 w 时，用「还没切 fixed 之前」的
+           文档流宽度兜底 —— 切了 fixed 再量就只剩内容宽度了。 */
+        const flowW = el.offsetWidth || 0;
+        const w = st.w > 0 ? st.w * window.innerWidth : flowW;
+        place(el, st.x * window.innerWidth, st.y * window.innerHeight, w);
+        el.dataset.wr = String(st.w > 0 ? st.w : (flowW / window.innerWidth || 0.2));
       }
     }
     this._bind();
@@ -137,7 +148,7 @@ const Drag = {
       if (!a.moved) return;
       const r = a.el.getBoundingClientRect();
       /* 落点写进 left/top，清掉 transform，避免亚像素模糊 */
-      place(a.el, r.left, r.top);
+      place(a.el, r.left, r.top, parseFloat(a.el.style.width) || r.width);
       a.el.style.zIndex = String(++zTop);
       a.el.dataset.wr = String(a.el.offsetWidth / window.innerWidth);
       store[a.key] = {
@@ -230,7 +241,13 @@ const Drag = {
       for (let i = 0; i < this.els.length; i++) {
         const el = this.els[i];
         const st = store[el.dataset.dragKey];
-        if (st) { el.classList.add('is-placed'); place(el, st.x * window.innerWidth, st.y * window.innerHeight); }
+        if (st) {
+          el.classList.add('is-placed');
+          /* 和 init 一样要带上存档宽度，否则重新打开拖动时卡片会塌成内容宽度 */
+          const w = st.w > 0 ? st.w * window.innerWidth : (el.offsetWidth || 0);
+          place(el, st.x * window.innerWidth, st.y * window.innerHeight, w);
+          el.dataset.wr = String(st.w > 0 ? st.w : (el.offsetWidth / window.innerWidth || 0.2));
+        }
       }
     }
   },

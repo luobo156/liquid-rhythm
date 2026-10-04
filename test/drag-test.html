@@ -10,6 +10,10 @@
   .glass{position:relative;width:320px;height:90px;border-radius:22px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08)}
   .topbar{display:flex;gap:8px;padding:10px;border:1px solid rgba(255,255,255,.2);border-radius:14px}
   button{font:inherit}
+  /* 模拟真实的模式卡：宽度由 flex 决定（不是写死的），
+     所以一旦变成 position:fixed 就会塌成内容宽度 —— 这正是要测的 bug */
+  .cards{display:flex;gap:14px;justify-content:center;width:900px}
+  .card{flex:1 1 220px;max-width:290px;width:auto;height:70px;color:#fff}
 </style>
 </head>
 <body>
@@ -22,6 +26,13 @@
   </div>
   <button class="glass" id="g3" data-drag="g3" data-mode="fall" style="height:60px">模式卡（本身是 button，应可拖）</button>
   <div class="topbar" id="bar" data-drag="bar"><button>顶栏按钮</button><span style="padding:6px">顶栏空白处</span></div>
+</div>
+<div class="screen" style="display:flex;justify-content:center">
+  <div class="cards">
+    <button class="glass card" id="mc1" data-drag="mc1">下落式</button>
+    <button class="glass card" id="mc2" data-drag="mc2">节奏医生式</button>
+    <button class="glass card" id="mc3" data-drag="mc3">横向</button>
+  </div>
 </div>
 <pre id="out" style="position:fixed;left:10px;bottom:10px;color:#0f0;font:12px monospace;margin:0"></pre>
 
@@ -110,6 +121,37 @@ const g2b = document.getElementById('g2');
 const f0 = g2b.getBoundingClientRect();
 pd(g2b, f0.left + 30, f0.top + 20); pm(f0.left + 130, f0.top + 120); pu(f0.left + 130, f0.top + 120);
 ok(g2b.style.position === '', '关闭后无法拖动');
+
+/* 9. 回归：拖一次再刷新，没动过的兄弟卡片宽度不能变窄
+      （原 bug：place() 恢复时没写回宽度，position:fixed 会 shrink-to-fit，
+        卡片塌成内容宽度；宽度只在 resize 时才补，所以「缩放一下窗口就好了」） */
+const cardsEls = ['mc1', 'mc2', 'mc3'].map(function (id) { return document.getElementById(id); });
+try { localStorage.removeItem('lr.layout.v1'); } catch (e) {}
+LR.Drag.setEnabled(false);
+LR.Drag.init({ dragUI: true });
+const flow = cardsEls.map(function (c) { const r = c.getBoundingClientRect(); return { w: r.width, l: r.left }; });
+ok(flow[1].w > 150, '模式卡在文档流里有正常宽度', flow[1].w.toFixed(0) + 'px');
+ok(LR.Drag._peers(cardsEls[0]).length === 2, '能找到同屏的兄弟卡片', LR.Drag._peers(cardsEls[0]).length + ' 个');
+
+/* 拖第一张：_begin 会把同屏其它卡片一起冻结并存档 */
+const mc0 = cardsEls[0].getBoundingClientRect();
+pd(cardsEls[0], mc0.left + 30, mc0.top + 20);
+pm(mc0.left + 90, mc0.top + 60);
+pu(mc0.left + 90, mc0.top + 60);
+const frozen = cardsEls.map(function (c) { return c.getBoundingClientRect().width; });
+ok(Math.abs(frozen[1] - flow[1].w) < 1.5, '冻结兄弟卡片时宽度不塌陷',
+   flow[1].w.toFixed(0) + ' → ' + frozen[1].toFixed(0));
+
+/* 模拟刷新：先让元素回到文档流，再跑一次 init（存档仍在 localStorage 里） */
+LR.Drag.setEnabled(false);
+LR.Drag.init({ dragUI: true });
+const after = cardsEls.map(function (c) { const r = c.getBoundingClientRect(); return { w: r.width, l: r.left }; });
+ok(Math.abs(after[1].w - flow[1].w) < 1.5, '刷新后第二张卡片宽度还原',
+   flow[1].w.toFixed(0) + ' → ' + after[1].w.toFixed(0));
+ok(Math.abs(after[2].w - flow[2].w) < 1.5, '刷新后第三张卡片宽度还原',
+   flow[2].w.toFixed(0) + ' → ' + after[2].w.toFixed(0));
+ok(Math.abs(after[1].l - flow[1].l) < 2, '刷新后第二张卡片水平位置还原',
+   flow[1].l.toFixed(0) + ' → ' + after[1].l.toFixed(0));
 
 L.push('');
 L.push(fail.n === 0 ? 'DRAG TEST: ALL PASSED' : 'DRAG TEST: ' + fail.n + ' FAILED');
